@@ -120,3 +120,135 @@ export interface AdminAnalytics {
   simulations: number;
   simulations_by_status: Record<string, number>;
 }
+
+// ─── Phase 2: ML + World Cup 2026 types ─────────────────────────────────────
+
+export interface MLOutcome {
+  home_win: number;
+  draw: number;
+  away_win: number;
+}
+
+export interface ExplanationFactor {
+  name: string;
+  display_name: string;
+  value: number;
+  impact: number;
+}
+
+export interface PredictionExplanation {
+  top_positive: ExplanationFactor[];
+  top_negative: ExplanationFactor[];
+  shap_values: number[];
+  narrative: string;
+}
+
+export interface HybridPrediction {
+  home_team: string;
+  away_team: string;
+  match_date: string;
+  statistical: MLOutcome;
+  ml_predictions: Record<string, MLOutcome>;
+  ensemble: MLOutcome;
+  home_xg: number;
+  away_xg: number;
+  expected_scoreline: string;
+  confidence_score: number;
+  model_agreement: number;
+  explanation: PredictionExplanation;
+}
+
+export interface MLModel {
+  id: number;
+  model_name: string;
+  version: string;
+  accuracy: number | null;
+  f1_score: number | null;
+  brier_score: number | null;
+  log_loss: number | null;
+  calibration_score: number | null;
+  ensemble_weight: number;
+  training_samples: number | null;
+  feature_version: string;
+  is_active: boolean;
+  trained_at: string | null;
+}
+
+export interface FeatureVector {
+  home_team: string;
+  away_team: string;
+  match_date: string;
+  feature_version: string;
+  features: Record<string, number>;
+}
+
+export interface QualifiedTeam {
+  team_name: string;
+  team_code: string;
+  confederation: string;
+  group_label: string | null;
+  pot: number | null;
+  host_nation: boolean;
+  confirmed: boolean;
+  qualification_path: string | null;
+}
+
+export interface WC2026Groups {
+  year: number;
+  draw_complete: boolean;
+  groups: Record<string, string[]>;
+  total_qualified: number;
+  qualification_status: { confirmed: number; total_slots: number };
+}
+
+export interface WC2026Simulation {
+  year: number;
+  runs: number;
+  draw_complete: boolean;
+  teams: TeamProbability[];
+}
+
+export interface TeamDetail {
+  team_name: string;
+  elo: number;
+  fifa_rank: number;
+  confederation: string | null;
+  attack: number;
+  defence: number;
+  chemistry: number;
+  form_ppg: number;
+  squad_stats: {
+    avg_age: number;
+    market_value_log: number;
+    injury_burden: number;
+    avg_fitness: number;
+  };
+  coach: {
+    name: string | null;
+    formation: string | null;
+    win_pct: number | null;
+    impact_score: number;
+  };
+  squad_size: number;
+  injured_count: number;
+  suspended_count: number;
+}
+
+export interface Player {
+  id: number;
+  name: string;
+  position: string;
+  club: string | null;
+  age: number | null;
+  goals: number;
+  assists: number;
+  xg: number;
+  xag: number;
+  minutes_played: number;
+  international_caps: number;
+  international_goals: number;
+  injured: boolean;
+  suspended: boolean;
+  fitness_score: number;
+  market_value_eur: number | null;
+}

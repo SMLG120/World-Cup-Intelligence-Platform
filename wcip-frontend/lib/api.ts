@@ -5,6 +5,8 @@
 import type {
   MatchPrediction, Page, ScenarioComparison, Simulation, Team, TokenPair,
   TournamentResult, User, EloPoint, AdminAnalytics,
+  HybridPrediction, MLModel, FeatureVector, QualifiedTeam,
+  WC2026Groups, WC2026Simulation, TeamDetail, Player,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || "/backend/api/v1";
@@ -142,4 +144,61 @@ export const api = {
 
   // --- admin ---
   adminAnalytics: () => request<AdminAnalytics>("/admin/analytics", { auth: true }),
+
+  // --- ML predictions (Phase 2) ---
+  mlPredict: (body: {
+    home_team: string;
+    away_team: string;
+    match_date?: string;
+    home_overrides?: Record<string, number>;
+    away_overrides?: Record<string, number>;
+    include_shap?: boolean;
+  }) => request<HybridPrediction>("/ml/predict", { method: "POST", body }),
+
+  mlModels: () => request<MLModel[]>("/ml/models"),
+
+  mlFeatures: (home: string, away: string, date?: string) => {
+    const params = new URLSearchParams({ home_team: home, away_team: away });
+    if (date) params.set("match_date", date);
+    return request<FeatureVector>(`/ml/features?${params}`);
+  },
+
+  mlExplanations: (home: string, away: string, model = "xgboost", date?: string) => {
+    const params = new URLSearchParams({ home_team: home, away_team: away, model });
+    if (date) params.set("match_date", date);
+    return request<{
+      home_team: string;
+      away_team: string;
+      model: string;
+      top_positive: Array<{ name: string; display_name: string; value: number; impact: number }>;
+      top_negative: Array<{ name: string; display_name: string; value: number; impact: number }>;
+      narrative: string;
+    }>(`/ml/explanations?${params}`);
+  },
+
+  // --- World Cup 2026 (Phase 2) ---
+  wc2026Teams: (params?: { confederation?: string; confirmed_only?: boolean }) => {
+    const p = new URLSearchParams({ year: "2026" });
+    if (params?.confederation) p.set("confederation", params.confederation);
+    if (params?.confirmed_only !== undefined) p.set("confirmed_only", String(params.confirmed_only));
+    return request<QualifiedTeam[]>(`/world-cup/qualified-teams?${p}`);
+  },
+
+  wc2026Groups: () => request<WC2026Groups>("/world-cup/groups?year=2026"),
+
+  wc2026Simulate: (runs = 10000, overrides?: Record<string, Record<string, number>>) =>
+    request<WC2026Simulation>("/world-cup/simulate", {
+      method: "POST",
+      body: { year: 2026, runs, overrides },
+    }),
+
+  wc2026Schedule: () => request<unknown>("/world-cup/schedule?year=2026"),
+
+  wc2026TeamDetail: (teamName: string) =>
+    request<TeamDetail>(`/world-cup/teams/${encodeURIComponent(teamName)}`),
+
+  wc2026Players: (teamName: string) =>
+    request<{ team_name: string; squad: Player[] }>(
+      `/world-cup/players/${encodeURIComponent(teamName)}`
+    ),
 };

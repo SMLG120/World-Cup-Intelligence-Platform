@@ -25,6 +25,24 @@ celery>=5.3
 numpy>=1.26
 scipy>=1.11
 
+# --- http / ETL ---
+httpx>=0.27
+
+# --- ML core ---
+scikit-learn>=1.4
+joblib>=1.3
+
+# --- ML ensemble (install individually if needed) ---
+xgboost>=2.0
+lightgbm>=4.3
+catboost>=1.2
+
+# --- explainability ---
+shap>=0.45
+
+# --- data processing ---
+pandas>=2.1
+
 # --- testing ---
 pytest>=7.4
 httpx>=0.26

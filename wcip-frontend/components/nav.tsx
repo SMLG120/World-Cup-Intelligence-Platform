@@ -7,6 +7,10 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/wc2026", label: "WC 2026" },
+  { href: "/compare", label: "Compare" },
+  { href: "/player-lab", label: "Lab" },
+  { href: "/models", label: "Models" },
   { href: "/simulate", label: "Match" },
   { href: "/tournament", label: "Tournament" },
   { href: "/scenarios", label: "Scenarios" },

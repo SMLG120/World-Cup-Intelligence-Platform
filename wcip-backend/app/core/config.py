@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     MAX_MONTE_CARLO_RUNS: int = 50_000
     SYNC_SIM_RUN_THRESHOLD: int = 2_000  # above this -> dispatch to Celery
 
+    # --- data sources ---
+    FOOTBALL_DATA_API_KEY: str = ""       # football-data.org free tier key
+
+    # --- ML ---
+    ML_MODELS_DIR: str = "models"
+    ML_MIN_TRAINING_SAMPLES: int = 200
+    ML_FEATURE_VERSION: str = "v1"
+    ETL_AUTO_RUN_ON_STARTUP: bool = False  # set True to auto-run ETL on deploy
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def _split_origins(cls, v):
