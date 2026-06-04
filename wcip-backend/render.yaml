@@ -1,0 +1,70 @@
+# Render deployment blueprint.
+# Create services from this file via the Render dashboard ("New > Blueprint").
+services:
+  - type: web
+    name: wcip-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    plan: starter
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wcip-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: wcip-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: wcip-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: wcip-redis
+          type: redis
+          property: connectionString
+      - key: BACKEND_CORS_ORIGINS
+        sync: false   # set to your Vercel domain
+    # Apply migrations before the web process starts.
+    preDeployCommand: alembic upgrade head
+
+  - type: worker
+    name: wcip-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: celery -A app.workers.celery_app.celery_app worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wcip-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: wcip-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: wcip-redis
+          type: redis
+          property: connectionString
+
+  - type: redis
+    name: wcip-redis
+    plan: starter
+    ipAllowList: []
+
+databases:
+  - name: wcip-db
+    plan: starter
+    postgresMajorVersion: "16"

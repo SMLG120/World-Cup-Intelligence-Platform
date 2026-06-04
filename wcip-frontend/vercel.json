@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "env": {
+    "NEXT_PUBLIC_API_BASE": "/backend/api/v1"
+  },
+  "rewrites": [
+    { "source": "/backend/:path*", "destination": "https://YOUR-RENDER-API.onrender.com/:path*" }
+  ]
+}

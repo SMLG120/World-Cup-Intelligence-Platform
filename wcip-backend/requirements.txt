@@ -1,0 +1,30 @@
+# --- web ---
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+email-validator>=2.0
+
+# --- data / config ---
+pydantic>=2.6
+pydantic-settings>=2.1
+
+# --- database ---
+SQLAlchemy>=2.0
+alembic>=1.13
+psycopg2-binary>=2.9      # PostgreSQL driver (prod)
+
+# --- auth ---
+PyJWT>=2.8
+bcrypt>=4.1
+
+# --- cache / queue ---
+redis>=5.0
+celery>=5.3
+
+# --- engine ---
+numpy>=1.26
+scipy>=1.11
+
+# --- testing ---
+pytest>=7.4
+httpx>=0.26

@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: wcip
+      POSTGRES_PASSWORD: wcip
+      POSTGRES_DB: wcip
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wcip"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wcip:wcip@db:5432/wcip
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
+      BACKEND_CORS_ORIGINS: http://localhost:3000
+      ENVIRONMENT: production
+      DEBUG: "false"
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://wcip:wcip@db:5432/wcip
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info
+
+  beat:
+    build: .
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: { condition: service_healthy }
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=info
+
+volumes:
+  pgdata:

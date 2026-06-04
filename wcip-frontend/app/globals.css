@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: 222 47% 6%;        /* near-black midnight blue (page) */
+  --surface: 222 38% 9%;    /* cards */
+  --elevated: 222 32% 13%;  /* raised panels */
+  --line: 222 20% 20%;      /* hairlines */
+  --fg: 40 30% 94%;         /* warm off-white text */
+  --muted: 220 12% 58%;     /* secondary text */
+  --pitch: 75 95% 55%;      /* acid lime — primary accent */
+  --signal: 8 90% 64%;      /* coral — counter / away accent */
+  --sky: 200 90% 62%;       /* draw / neutral accent */
+}
+
+* {
+  border-color: hsl(var(--line));
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: hsl(var(--ink));
+  color: hsl(var(--fg));
+  font-feature-settings: "ss01", "cv01";
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Subtle film grain over a faint radial glow for stadium-night depth. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, hsl(var(--pitch) / 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, hsl(var(--sky) / 0.05), transparent 55%);
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+#__next, main, .app-root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Tabular numerals everywhere stats appear. */
+.tnum {
+  font-family: var(--font-mono), monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.kicker {
+  font-family: var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  color: hsl(var(--muted));
+}
+
+.display {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: hsl(var(--ink)); }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--line));
+  border-radius: 6px;
+  border: 2px solid hsl(var(--ink));
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted)); }
+
+::selection {
+  background: hsl(var(--pitch) / 0.3);
+  color: hsl(var(--fg));
+}
