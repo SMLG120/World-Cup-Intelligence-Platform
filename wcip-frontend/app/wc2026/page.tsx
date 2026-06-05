@@ -6,7 +6,7 @@ import type { QualifiedTeam, WC2026Groups, WC2026Simulation } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const CONFEDERATION_COLORS: Record<string, string> = {
@@ -189,16 +189,15 @@ export default function WC2026Page() {
         ) : (
           <div>
             <div className="flex items-center gap-4 mb-6">
-              <Select value={simRuns} onValueChange={setSimRuns}>
-                <SelectTrigger className="w-40 bg-white/5 border-white/20 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-white/20">
-                  {[["1000", "1K runs"], ["5000", "5K runs"], ["10000", "10K runs"],
-                    ["50000", "50K runs"]].map(([v, l]) => (
-                    <SelectItem key={v} value={v} className="text-white">{l}</SelectItem>
-                  ))}
-                </SelectContent>
+              <Select
+                value={simRuns}
+                onChange={(e) => setSimRuns(e.target.value)}
+                className="w-40"
+              >
+                {[["1000", "1K runs"], ["5000", "5K runs"], ["10000", "10K runs"],
+                  ["50000", "50K runs"]].map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
               </Select>
               <Button onClick={runSimulation} disabled={simRunning}
                 className="bg-amber-500 hover:bg-amber-400 text-black font-semibold">

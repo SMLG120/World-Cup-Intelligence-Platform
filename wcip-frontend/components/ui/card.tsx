@@ -21,3 +21,15 @@ export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElemen
 export function CardBody({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("p-5", className)} {...props} />;
 }
+
+// Aliases used by Phase 2 pages (shadcn-style naming)
+export const CardContent = CardBody;
+
+export function CardTitle({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("text-sm font-semibold text-fg leading-tight", className)}
+      {...props}
+    />
+  );
+}

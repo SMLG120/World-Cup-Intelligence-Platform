@@ -34,11 +34,13 @@ function OverrideSlider({
         <span className="text-xs font-mono text-white">{value.toFixed(2)}</span>
       </div>
       <Slider
-        value={[value]}
+        label=""
+        display={value.toFixed(2)}
+        value={value}
         min={min}
         max={max}
         step={step}
-        onValueChange={([v]) => onChange(v)}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
         className="w-full"
       />
       <p className="text-xs text-gray-500 mt-0.5">{hint}</p>

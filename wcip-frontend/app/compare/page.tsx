@@ -1,284 +1,434 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
+  LineChart, Line, ReferenceLine, ErrorBar,
+} from "recharts";
+import { useTeams, useMLPredict } from "@/lib/queries";
 import type { HybridPrediction } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { pct } from "@/lib/utils";
 
-const MODEL_LABELS: Record<string, string> = {
-  logistic: "Logistic Regression",
-  random_forest: "Random Forest",
-  xgboost: "XGBoost",
-  lightgbm: "LightGBM",
-  catboost: "CatBoost",
-};
+// ── Team selector ─────────────────────────────────────────────────────────────
 
-function OutcomeBar({ label, probs, color }: {
+function TeamInput({
+  label,
+  value,
+  onChange,
+  options,
+}: {
   label: string;
-  probs: { home_win: number; draw: number; away_win: number };
-  color: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
 }) {
-  const hw = (probs.home_win * 100).toFixed(1);
-  const dr = (probs.draw * 100).toFixed(1);
-  const aw = (probs.away_win * 100).toFixed(1);
   return (
-    <div>
-      <div className="flex justify-between items-center mb-1">
-        <span className={`text-xs font-semibold ${color}`}>{label}</span>
-        <div className="flex gap-4 text-xs text-gray-400">
-          <span className="text-green-400 font-medium">{hw}%</span>
-          <span className="text-gray-400">{dr}%</span>
-          <span className="text-red-400 font-medium">{aw}%</span>
+    <div className="flex-1">
+      <label className="kicker block mb-1.5">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2.5 rounded-md border border-line bg-elevated text-fg text-sm
+          focus:outline-none focus:border-pitch transition-colors"
+      >
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// ── Model agreement meter ─────────────────────────────────────────────────────
+
+function AgreementMeter({ agreement, confidence }: { agreement: number; confidence: number }) {
+  const agreementPct = agreement * 100;
+  const level = agreementPct >= 80 ? "High" : agreementPct >= 60 ? "Medium" : "Low";
+  const colour = agreementPct >= 80 ? "hsl(var(--pitch))" : agreementPct >= 60 ? "hsl(45 95% 58%)" : "hsl(var(--signal))";
+
+  return (
+    <div className="grid grid-cols-2 gap-6">
+      <div className="text-center">
+        <div className="kicker mb-3">Model agreement</div>
+        <div className="relative size-28 mx-auto">
+          <svg viewBox="0 0 100 60" className="w-full" style={{ overflow: "visible" }}>
+            <path d="M 10,55 A 40,40 0 0,1 90,55" fill="none" stroke="hsl(var(--elevated))" strokeWidth="10" strokeLinecap="round" />
+            <path
+              d="M 10,55 A 40,40 0 0,1 90,55"
+              fill="none"
+              stroke={colour}
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeDasharray={`${agreementPct * 1.257} 200`}
+              className="transition-all duration-700"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
+            <span className="tnum text-2xl font-bold text-fg" style={{ color: colour }}>
+              {agreementPct.toFixed(0)}%
+            </span>
+            <span className="text-xs text-muted">{level}</span>
+          </div>
         </div>
       </div>
-      <div className="flex h-3 rounded-full overflow-hidden">
-        <div className="bg-green-500 transition-all" style={{ width: `${probs.home_win * 100}%` }} />
-        <div className="bg-gray-500 transition-all" style={{ width: `${probs.draw * 100}%` }} />
-        <div className="bg-red-500 transition-all" style={{ width: `${probs.away_win * 100}%` }} />
+
+      <div className="text-center">
+        <div className="kicker mb-3">Confidence score</div>
+        <div className="relative size-28 mx-auto">
+          <svg viewBox="0 0 100 60" className="w-full" style={{ overflow: "visible" }}>
+            <path d="M 10,55 A 40,40 0 0,1 90,55" fill="none" stroke="hsl(var(--elevated))" strokeWidth="10" strokeLinecap="round" />
+            <path
+              d="M 10,55 A 40,40 0 0,1 90,55"
+              fill="none"
+              stroke="hsl(200 90% 62%)"
+              strokeWidth="10"
+              strokeLinecap="round"
+              strokeDasharray={`${confidence * 100 * 1.257} 200`}
+              className="transition-all duration-700"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
+            <span className="tnum text-2xl font-bold text-[hsl(200_90%_62%)]">
+              {(confidence * 100).toFixed(0)}%
+            </span>
+            <span className="text-xs text-muted">score</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function ExplanationPanel({ prediction }: { prediction: HybridPrediction }) {
-  const { explanation } = prediction;
-  if (!explanation) return null;
+// ── Probability distribution chart ────────────────────────────────────────────
+
+const MODEL_LABELS: Record<string, string> = {
+  statistical: "Stat",
+  logistic: "Logistic",
+  random_forest: "RF",
+  xgboost: "XGB",
+  lightgbm: "LGBM",
+  catboost: "CatB",
+  ensemble: "Ensemble",
+};
+
+const MODEL_COLOURS: Record<string, string> = {
+  statistical: "hsl(45 95% 58%)",
+  logistic: "hsl(220 90% 62%)",
+  random_forest: "hsl(140 70% 50%)",
+  xgboost: "hsl(8 90% 64%)",
+  lightgbm: "hsl(280 70% 68%)",
+  catboost: "hsl(200 90% 62%)",
+  ensemble: "hsl(75 95% 55%)",
+};
+
+function ProbabilityDistribution({
+  home,
+  away,
+  prediction,
+}: {
+  home: string;
+  away: string;
+  prediction: HybridPrediction;
+}) {
+  const data = [
+    { model: "Stat", key: "statistical", ...prediction.statistical },
+    ...Object.entries(prediction.ml_predictions).map(([k, v]) => ({
+      model: MODEL_LABELS[k] ?? k,
+      key: k,
+      ...v,
+    })),
+    { model: "Ensemble", key: "ensemble", ...prediction.ensemble },
+  ].map((row) => ({
+    model: row.model,
+    key: row.key as string,
+    [`${home} win`]: parseFloat((row.home_win * 100).toFixed(1)),
+    Draw: parseFloat((row.draw * 100).toFixed(1)),
+    [`${away} win`]: parseFloat((row.away_win * 100).toFixed(1)),
+  }));
+
   return (
-    <Card className="bg-white/5 border-white/10 mt-4">
-      <CardHeader>
-        <CardTitle className="text-sm text-gray-300">AI Explanation</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {explanation.narrative && (
-          <p className="text-sm text-gray-300 bg-white/5 rounded-lg p-3 border border-white/10">
-            {explanation.narrative}
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-4">
-          {explanation.top_positive.length > 0 && (
-            <div>
-              <div className="text-xs font-semibold text-green-400 mb-2">
-                Favours {prediction.home_team}
-              </div>
-              {explanation.top_positive.map((f) => (
-                <div key={f.name} className="flex justify-between text-xs py-1 border-b border-white/5">
-                  <span className="text-gray-400">{f.display_name}</span>
-                  <span className="text-green-400 font-mono">+{f.impact.toFixed(3)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {explanation.top_negative.length > 0 && (
-            <div>
-              <div className="text-xs font-semibold text-red-400 mb-2">
-                Favours {prediction.away_team}
-              </div>
-              {explanation.top_negative.map((f) => (
-                <div key={f.name} className="flex justify-between text-xs py-1 border-b border-white/5">
-                  <span className="text-gray-400">{f.display_name}</span>
-                  <span className="text-red-400 font-mono">{f.impact.toFixed(3)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <ResponsiveContainer width="100%" height={260}>
+      <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
+        <XAxis dataKey="model" stroke="hsl(var(--muted))" fontSize={11} tick={{ fill: "hsl(var(--muted))" }} />
+        <YAxis tickFormatter={(v) => `${v}%`} stroke="hsl(var(--muted))" fontSize={11} domain={[0, 100]} />
+        <Tooltip
+          contentStyle={{
+            background: "hsl(var(--elevated))", border: "1px solid hsl(var(--line))",
+            borderRadius: 8, fontSize: 11,
+          }}
+          labelStyle={{ color: "hsl(var(--fg))", fontWeight: "bold" }}
+          formatter={(v: number) => [`${v}%`]}
+        />
+        <Bar dataKey={`${home} win`} fill="hsl(var(--pitch))" radius={[4, 4, 0, 0]} maxBarSize={24} />
+        <Bar dataKey="Draw" fill="hsl(var(--line))" radius={[4, 4, 0, 0]} maxBarSize={24} />
+        <Bar dataKey={`${away} win`} fill="hsl(var(--signal))" radius={[4, 4, 0, 0]} maxBarSize={24} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 
-export default function ComparePage() {
-  const [homeTeam, setHomeTeam] = useState("France");
-  const [awayTeam, setAwayTeam] = useState("Brazil");
-  const [prediction, setPrediction] = useState<HybridPrediction | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// ── Prediction difference chart ───────────────────────────────────────────────
 
-  const predict = useCallback(async () => {
-    if (!homeTeam.trim() || !awayTeam.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.mlPredict({
-        home_team: homeTeam,
-        away_team: awayTeam,
-        include_shap: true,
-      });
-      setPrediction(result);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Prediction failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [homeTeam, awayTeam]);
+function PredictionDiffChart({
+  home,
+  prediction,
+}: {
+  home: string;
+  prediction: HybridPrediction;
+}) {
+  const ensembleHomeWin = prediction.ensemble.home_win * 100;
+
+  const data = Object.entries(prediction.ml_predictions).map(([k, v]) => ({
+    model: MODEL_LABELS[k] ?? k,
+    diff: parseFloat(((v.home_win - prediction.ensemble.home_win) * 100).toFixed(2)),
+    fill: v.home_win > prediction.ensemble.home_win ? "hsl(var(--pitch))" : "hsl(var(--signal))",
+  }));
+
+  data.unshift({
+    model: "Stat",
+    diff: parseFloat(((prediction.statistical.home_win - prediction.ensemble.home_win) * 100).toFixed(2)),
+    fill: prediction.statistical.home_win > prediction.ensemble.home_win ? "hsl(var(--pitch))" : "hsl(var(--signal))",
+  });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
-            Prediction Comparison
-          </h1>
-          <p className="text-gray-400">
-            Compare Statistical, Machine Learning, and Ensemble predictions side-by-side
-          </p>
-        </div>
+    <div className="space-y-2">
+      <p className="kicker">{home} win — deviation from ensemble</p>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
+          <XAxis dataKey="model" stroke="hsl(var(--muted))" fontSize={11} tick={{ fill: "hsl(var(--muted))" }} />
+          <YAxis tickFormatter={(v) => `${v > 0 ? "+" : ""}${v}%`} stroke="hsl(var(--muted))" fontSize={11} />
+          <Tooltip
+            formatter={(v: number) => [`${v > 0 ? "+" : ""}${v.toFixed(1)}% vs ensemble`, "Deviation"]}
+            contentStyle={{
+              background: "hsl(var(--elevated))", border: "1px solid hsl(var(--line))",
+              borderRadius: 8, fontSize: 11,
+            }}
+          />
+          <ReferenceLine y={0} stroke="hsl(var(--muted))" strokeDasharray="4 4" />
+          <Bar dataKey="diff" radius={4} maxBarSize={24}>
+            {data.map((d, i) => <Cell key={i} fill={d.fill} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
-        {/* Team selector */}
-        <Card className="bg-white/5 border-white/10 mb-6">
-          <CardContent className="p-4">
-            <div className="flex gap-3 items-end">
-              <div className="flex-1">
-                <label className="text-xs text-gray-400 mb-1 block">Home Team</label>
-                <Input
-                  value={homeTeam}
-                  onChange={(e) => setHomeTeam(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && predict()}
-                  placeholder="e.g. France"
-                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-500"
-                />
+// ── Full comparison table ─────────────────────────────────────────────────────
+
+function ComparisonTable({ home, away, prediction }: { home: string; away: string; prediction: HybridPrediction }) {
+  const rows = [
+    { label: "Statistical", key: "statistical", probs: prediction.statistical, accent: "hsl(45 95% 58%)" },
+    ...Object.entries(prediction.ml_predictions).map(([k, v]) => ({
+      label: MODEL_LABELS[k] ?? k,
+      key: k,
+      probs: v,
+      accent: MODEL_COLOURS[k] ?? "hsl(var(--muted))",
+    })),
+    { label: "Ensemble", key: "ensemble", probs: prediction.ensemble, accent: "hsl(var(--pitch))" },
+  ];
+
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="kicker text-left border-b border-line">
+          <th className="py-2 font-normal">Model</th>
+          <th className="py-2 font-normal text-right text-pitch">{home}</th>
+          <th className="py-2 font-normal text-right text-muted">Draw</th>
+          <th className="py-2 font-normal text-right text-signal">{away}</th>
+          <th className="py-2 font-normal text-right text-muted hidden sm:table-cell">Leader</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ label, key, probs, accent }) => {
+          const best = probs.home_win > probs.away_win && probs.home_win > probs.draw
+            ? home : probs.away_win > probs.home_win && probs.away_win > probs.draw
+            ? away : "Draw";
+          const isBold = key === "ensemble";
+          return (
+            <tr key={key} className={`border-b border-line/50 ${isBold ? "font-semibold" : ""}`}>
+              <td className="py-2" style={{ color: accent }}>{label}</td>
+              <td className="py-2 text-right tnum text-pitch">{pct(probs.home_win)}</td>
+              <td className="py-2 text-right tnum text-muted">{pct(probs.draw)}</td>
+              <td className="py-2 text-right tnum text-signal">{pct(probs.away_win)}</td>
+              <td className="py-2 text-right text-muted text-xs hidden sm:table-cell">{best}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+// ── SHAP explanation ──────────────────────────────────────────────────────────
+
+function ExplanationPanel({ prediction }: { prediction: HybridPrediction }) {
+  const { explanation } = prediction;
+  if (!explanation?.narrative) return null;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted leading-relaxed bg-elevated rounded-lg p-3 border border-line">
+        {explanation.narrative}
+      </p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        {explanation.top_positive.length > 0 && (
+          <div>
+            <p className="kicker text-pitch mb-2">Favours {prediction.home_team}</p>
+            {explanation.top_positive.map((f) => (
+              <div key={f.name} className="flex justify-between text-xs py-1.5 border-b border-line/40">
+                <span className="text-muted">{f.display_name}</span>
+                <span className="text-pitch tnum">+{f.impact.toFixed(3)}</span>
               </div>
-              <div className="text-gray-500 pb-2 font-bold">vs</div>
-              <div className="flex-1">
-                <label className="text-xs text-gray-400 mb-1 block">Away Team</label>
-                <Input
-                  value={awayTeam}
-                  onChange={(e) => setAwayTeam(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && predict()}
-                  placeholder="e.g. Brazil"
-                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-500"
-                />
-              </div>
-              <Button
-                onClick={predict}
-                disabled={loading}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-semibold"
-              >
-                {loading ? "Predicting…" : "Compare"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {error && (
-          <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-3 mb-4 text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div className="space-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 bg-white/5 rounded-xl" />
             ))}
           </div>
-        ) : prediction ? (
-          <div className="space-y-4">
-            {/* Match header */}
-            <div className="text-center py-4">
-              <div className="text-2xl font-bold text-white">
-                {prediction.home_team}
-                <span className="text-gray-500 mx-3">vs</span>
-                {prediction.away_team}
+        )}
+        {explanation.top_negative.length > 0 && (
+          <div>
+            <p className="kicker text-signal mb-2">Favours {prediction.away_team}</p>
+            {explanation.top_negative.map((f) => (
+              <div key={f.name} className="flex justify-between text-xs py-1.5 border-b border-line/40">
+                <span className="text-muted">{f.display_name}</span>
+                <span className="text-signal tnum">{f.impact.toFixed(3)}</span>
               </div>
-              <div className="text-sm text-gray-400 mt-1">
-                Expected: {prediction.expected_scoreline} ·
-                xG {prediction.home_xg.toFixed(2)} – {prediction.away_xg.toFixed(2)}
-              </div>
-              <div className="flex justify-center gap-4 mt-2 text-xs">
-                <span className="text-gray-400">
-                  Confidence: <span className="text-white">{(prediction.confidence_score * 100).toFixed(0)}%</span>
-                </span>
-                <span className="text-gray-400">
-                  Model Agreement: <span className="text-white">{(prediction.model_agreement * 100).toFixed(0)}%</span>
-                </span>
-              </div>
-            </div>
-
-            {/* Legend */}
-            <div className="flex gap-6 text-xs justify-center text-gray-400">
-              <span><span className="inline-block w-3 h-3 bg-green-500 rounded-sm mr-1" />Home Win</span>
-              <span><span className="inline-block w-3 h-3 bg-gray-500 rounded-sm mr-1" />Draw</span>
-              <span><span className="inline-block w-3 h-3 bg-red-500 rounded-sm mr-1" />Away Win</span>
-            </div>
-
-            {/* Three-layer comparison */}
-            <Card className="bg-white/5 border-white/10">
-              <CardContent className="p-4 space-y-5">
-                <OutcomeBar
-                  label="Statistical (Elo + Poisson)"
-                  probs={prediction.statistical}
-                  color="text-amber-400"
-                />
-                {Object.entries(prediction.ml_predictions).map(([model, probs]) => (
-                  <OutcomeBar
-                    key={model}
-                    label={MODEL_LABELS[model] || model}
-                    probs={probs}
-                    color="text-blue-400"
-                  />
-                ))}
-                <div className="border-t border-white/10 pt-4">
-                  <OutcomeBar
-                    label="🎯 Ensemble (Weighted Average)"
-                    probs={prediction.ensemble}
-                    color="text-purple-400"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Probability numbers table */}
-            <Card className="bg-white/5 border-white/10">
-              <CardContent className="p-4">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-400 text-xs border-b border-white/10">
-                      <th className="text-left py-2">Model</th>
-                      <th className="text-right text-green-400">{prediction.home_team}</th>
-                      <th className="text-right text-gray-400">Draw</th>
-                      <th className="text-right text-red-400">{prediction.away_team}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-white/5">
-                      <td className="py-2 text-amber-400">Statistical</td>
-                      <td className="text-right text-green-400">{(prediction.statistical.home_win * 100).toFixed(1)}%</td>
-                      <td className="text-right text-gray-400">{(prediction.statistical.draw * 100).toFixed(1)}%</td>
-                      <td className="text-right text-red-400">{(prediction.statistical.away_win * 100).toFixed(1)}%</td>
-                    </tr>
-                    {Object.entries(prediction.ml_predictions).map(([model, probs]) => (
-                      <tr key={model} className="border-b border-white/5">
-                        <td className="py-2 text-blue-400">{MODEL_LABELS[model] || model}</td>
-                        <td className="text-right text-green-400">{(probs.home_win * 100).toFixed(1)}%</td>
-                        <td className="text-right text-gray-400">{(probs.draw * 100).toFixed(1)}%</td>
-                        <td className="text-right text-red-400">{(probs.away_win * 100).toFixed(1)}%</td>
-                      </tr>
-                    ))}
-                    <tr className="font-bold">
-                      <td className="py-2 text-purple-400">Ensemble</td>
-                      <td className="text-right text-green-400">{(prediction.ensemble.home_win * 100).toFixed(1)}%</td>
-                      <td className="text-right text-gray-400">{(prediction.ensemble.draw * 100).toFixed(1)}%</td>
-                      <td className="text-right text-red-400">{(prediction.ensemble.away_win * 100).toFixed(1)}%</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-
-            {/* SHAP Explanation */}
-            <ExplanationPanel prediction={prediction} />
-          </div>
-        ) : (
-          <div className="text-center py-20 text-gray-500">
-            Enter two teams above and click Compare to see the full prediction breakdown
+            ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function ComparePage() {
+  const { data: teams } = useTeams();
+  const teamNames = useMemo(() => (teams ?? []).map((t) => t.name).sort(), [teams]);
+
+  const [home, setHome] = useState("France");
+  const [away, setAway] = useState("Brazil");
+  const [prediction, setPrediction] = useState<HybridPrediction | null>(null);
+
+  const mlMutation = useMLPredict();
+
+  const predict = () => {
+    mlMutation.mutate(
+      { home_team: home, away_team: away, include_shap: true },
+      { onSuccess: (r) => setPrediction(r) },
+    );
+  };
+
+  return (
+    <div className="space-y-8">
+      <header>
+        <p className="kicker mb-2">Model comparison</p>
+        <h1 className="display text-4xl">Prediction comparison</h1>
+        <p className="text-muted mt-2 max-w-2xl">
+          Statistical, 5 ML models, and ensemble — compared side by side with
+          deviation charts, confidence scores, and SHAP explanations.
+        </p>
+      </header>
+
+      {/* Selector */}
+      <Card>
+        <CardBody>
+          <div className="flex gap-3 items-end flex-wrap">
+            <TeamInput
+              label="Home team" value={home} onChange={setHome}
+              options={teamNames.length ? teamNames : [home]}
+            />
+            <div className="text-muted pb-2.5 font-bold shrink-0">vs</div>
+            <TeamInput
+              label="Away team" value={away} onChange={setAway}
+              options={teamNames.length ? teamNames : [away]}
+            />
+            <Button onClick={predict} disabled={mlMutation.isPending || home === away} size="md">
+              {mlMutation.isPending ? "Comparing…" : "Compare"}
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      {mlMutation.isError && (
+        <p className="text-signal text-sm">{(mlMutation.error as Error).message}</p>
+      )}
+
+      {mlMutation.isPending && (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {prediction && !mlMutation.isPending && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            {/* Match title */}
+            <div className="text-center">
+              <div className="display text-3xl">
+                {prediction.home_team}
+                <span className="text-muted mx-3 text-2xl">vs</span>
+                {prediction.away_team}
+              </div>
+              <p className="text-muted text-sm mt-1">
+                Expected {prediction.expected_scoreline} · xG {prediction.home_xg.toFixed(2)} – {prediction.away_xg.toFixed(2)}
+              </p>
+            </div>
+
+            {/* Agreement + confidence */}
+            <Card>
+              <CardHeader><span className="kicker">Model consensus</span></CardHeader>
+              <CardBody>
+                <AgreementMeter
+                  agreement={prediction.model_agreement}
+                  confidence={prediction.confidence_score}
+                />
+              </CardBody>
+            </Card>
+
+            <div className="grid gap-5 lg:grid-cols-2">
+              {/* Probability distribution */}
+              <Card>
+                <CardHeader><span className="kicker">Home-win probability by model</span></CardHeader>
+                <CardBody>
+                  <ProbabilityDistribution home={prediction.home_team} away={prediction.away_team} prediction={prediction} />
+                </CardBody>
+              </Card>
+
+              {/* Deviation from ensemble */}
+              <Card>
+                <CardHeader><span className="kicker">Deviation from ensemble</span></CardHeader>
+                <CardBody>
+                  <PredictionDiffChart home={prediction.home_team} prediction={prediction} />
+                </CardBody>
+              </Card>
+            </div>
+
+            {/* Full table */}
+            <Card>
+              <CardHeader><span className="kicker">Full probability table</span></CardHeader>
+              <CardBody className="overflow-x-auto">
+                <ComparisonTable home={prediction.home_team} away={prediction.away_team} prediction={prediction} />
+              </CardBody>
+            </Card>
+
+            {/* SHAP explanation */}
+            <Card>
+              <CardHeader><span className="kicker">AI explanation (ensemble SHAP)</span></CardHeader>
+              <CardBody>
+                <ExplanationPanel prediction={prediction} />
+              </CardBody>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
