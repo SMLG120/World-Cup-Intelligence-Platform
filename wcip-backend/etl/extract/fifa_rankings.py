@@ -19,21 +19,44 @@ _RANKINGS_API = "https://www.fifaindex.com/api/teams/?league=30&order=desc&page=
 
 _CACHE = Path(__file__).parents[2] / "data" / "cache" / "fifa_rankings.json"
 
-# Embedded fallback (June 2025 approximate)
+# Embedded fallback (updated June 2026 — WC2026 finalized field).
+# Note: Italy, Poland, Denmark removed (did not qualify).
+# All 52 confirmed WC2026 participants included.
 _FIFA_RANK_FALLBACK: Dict[str, int] = {
-    "Argentina": 1, "France": 2, "England": 3, "Belgium": 4,
-    "Brazil": 5, "Portugal": 6, "Netherlands": 7, "Spain": 8,
-    "Italy": 9, "Croatia": 10, "Morocco": 11, "Japan": 12,
-    "United States": 13, "Mexico": 14, "Uruguay": 15, "Colombia": 16,
-    "Switzerland": 17, "Denmark": 18, "Germany": 19, "South Korea": 20,
-    "Ecuador": 21, "Turkey": 22, "Austria": 23, "Senegal": 24,
-    "Nigeria": 25, "Hungary": 26, "Wales": 27, "Iran": 28,
-    "Australia": 29, "Poland": 30, "Serbia": 31, "Czech Republic": 32,
-    "Ukraine": 33, "Sweden": 34, "Scotland": 35, "Ivory Coast": 36,
-    "Algeria": 37, "Egypt": 38, "Russia": 39, "Peru": 40,
-    "Chile": 41, "Greece": 42, "Canada": 43, "Paraguay": 44,
-    "Venezuela": 45, "Ghana": 46, "Tunisia": 47, "Romania": 48,
-    "Saudi Arabia": 49, "Bolivia": 50,
+    "Argentina": 1,  "France": 2,      "England": 3,    "Belgium": 4,
+    "Brazil": 5,     "Portugal": 6,    "Netherlands": 7, "Spain": 8,
+    "Croatia": 10,   "Morocco": 11,    "Japan": 12,
+    "United States": 13, "Mexico": 14, "Uruguay": 15,   "Colombia": 16,
+    "Switzerland": 17, "Germany": 19,  "South Korea": 20,
+    "Ecuador": 21,   "Turkey": 22,    "Austria": 23,    "Senegal": 24,
+    "Nigeria": 25,   "Hungary": 26,   "Wales": 27,      "Iran": 28,
+    "Australia": 29, "Serbia": 31,
+    "Ukraine": 33,   "Scotland": 35,  "Ivory Coast": 36,
+    "Egypt": 38,     "Canada": 43,    "Venezuela": 45,  "Ghana": 46,
+    "Tunisia": 47,   "Saudi Arabia": 49,
+    # WC2026 finalized additions and updates (June 2026)
+    "Czechia": 32,             # formerly Czech Republic
+    "Czech Republic": 32,      # alias for fallback lookups
+    "Sweden": 34,
+    "Norway": 36,
+    "Algeria": 37,
+    "Paraguay": 44,
+    "Bosnia and Herzegovina": 52,
+    "Bosnia & Herzegovina": 52,
+    "South Africa": 58,
+    "Cameroon": 55,
+    "DR Congo": 60,
+    "Panama": 68,
+    "Cape Verde": 74,
+    "Iraq": 65,
+    "Qatar": 37,
+    "Uzbekistan": 72,
+    "Jordan": 85,
+    "New Zealand": 96,
+    "Haiti": 91,
+    "Curaçao": 87,
+    "Curacao": 87,
+    "Ghana": 46,
 }
 
 

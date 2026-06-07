@@ -2,6 +2,12 @@
 
 International datasets use different spellings for the same country.
 This module provides a canonical name map and fuzzy-match fallback.
+
+Canonical names match the official FIFA terminology used in WC2026:
+  - "Czechia" (not "Czech Republic")
+  - "Bosnia and Herzegovina" (not "Bosnia & Herzegovina")
+  - "DR Congo" (not "Congo DR" or "Democratic Republic of Congo")
+  - "Curaçao" (not "Curacao")
 """
 from __future__ import annotations
 
@@ -10,50 +16,93 @@ from typing import Dict
 
 # Map variant spellings -> canonical name used throughout this platform.
 NAME_MAP: Dict[str, str] = {
-    # United States variants
+    # ── United States ────────────────────────────────────────────────────────
     "USA": "United States",
     "US": "United States",
     "United States of America": "United States",
     "America": "United States",
 
-    # South Korea
+    # ── South Korea ──────────────────────────────────────────────────────────
     "Korea Republic": "South Korea",
     "Korea DPR": "North Korea",
     "Rep. Korea": "South Korea",
+    "KOR": "South Korea",
 
-    # Ivory Coast
+    # ── Ivory Coast ──────────────────────────────────────────────────────────
     "Côte d'Ivoire": "Ivory Coast",
     "Cote d'Ivoire": "Ivory Coast",
     "Cote D'Ivoire": "Ivory Coast",
 
-    # Czech Republic
-    "Czechia": "Czech Republic",
-    "Czech Rep.": "Czech Republic",
+    # ── Czechia (canonical; "Czech Republic" is the historical CSV spelling) ─
+    "Czech Republic": "Czechia",
+    "Czech Rep.": "Czechia",
+    "CZE": "Czechia",
 
-    # North Macedonia
+    # ── Bosnia and Herzegovina ───────────────────────────────────────────────
+    "Bosnia & Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia-Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia": "Bosnia and Herzegovina",
+    "BIH": "Bosnia and Herzegovina",
+
+    # ── DR Congo ─────────────────────────────────────────────────────────────
+    "Congo DR": "DR Congo",
+    "Democratic Republic of Congo": "DR Congo",
+    "Democratic Republic of the Congo": "DR Congo",
+    "Congo, DR": "DR Congo",
+    "DRC": "DR Congo",
+    "COD": "DR Congo",
+
+    # ── Curaçao ──────────────────────────────────────────────────────────────
+    "Curacao": "Curaçao",
+    "CUW": "Curaçao",
+
+    # ── North Macedonia ──────────────────────────────────────────────────────
     "Macedonia": "North Macedonia",
     "FYR Macedonia": "North Macedonia",
 
-    # Bosnia
-    "Bosnia and Herzegovina": "Bosnia & Herzegovina",
-    "Bosnia-Herzegovina": "Bosnia & Herzegovina",
-
-    # Trinidad
+    # ── Trinidad & Tobago ────────────────────────────────────────────────────
     "Trinidad and Tobago": "Trinidad & Tobago",
     "T&T": "Trinidad & Tobago",
 
-    # Saudi Arabia
+    # ── Saudi Arabia ─────────────────────────────────────────────────────────
     "KSA": "Saudi Arabia",
     "Kingdom of Saudi Arabia": "Saudi Arabia",
 
-    # Iran
+    # ── Iran ─────────────────────────────────────────────────────────────────
     "IR Iran": "Iran",
     "Islamic Republic of Iran": "Iran",
+    "IRN": "Iran",
 
-    # England
+    # ── Algeria ──────────────────────────────────────────────────────────────
+    "Algeria": "Algeria",
+    "ALG": "Algeria",
+
+    # ── Cape Verde ───────────────────────────────────────────────────────────
+    "Cabo Verde": "Cape Verde",
+    "CPV": "Cape Verde",
+
+    # ── Iraq ─────────────────────────────────────────────────────────────────
+    "IRQ": "Iraq",
+
+    # ── Norway ───────────────────────────────────────────────────────────────
+    "NOR": "Norway",
+
+    # ── Sweden ───────────────────────────────────────────────────────────────
+    "SWE": "Sweden",
+
+    # ── Paraguay ─────────────────────────────────────────────────────────────
+    "PAR": "Paraguay",
+    "PRY": "Paraguay",
+
+    # ── Haiti ────────────────────────────────────────────────────────────────
+    "HAI": "Haiti",
+    "HTI": "Haiti",
+
+    # ── Panama ───────────────────────────────────────────────────────────────
+    "PAN": "Panama",
+
+    # ── Country code -> name (FIFA standard codes) ───────────────────────────
     "ENG": "England",
-
-    # Country code -> name
     "ARG": "Argentina",
     "BRA": "Brazil",
     "FRA": "France",
@@ -80,12 +129,20 @@ NAME_MAP: Dict[str, str] = {
     "ECU": "Ecuador",
     "WAL": "Wales",
     "CAN": "Canada",
-    "KOR": "South Korea",
     "TUN": "Tunisia",
     "CMR": "Cameroon",
     "GHA": "Ghana",
     "NGA": "Nigeria",
     "EGY": "Egypt",
+    "RSA": "South Africa",
+    "UZB": "Uzbekistan",
+    "JOR": "Jordan",
+    "NZL": "New Zealand",
+    "VEN": "Venezuela",
+    "NOR": "Norway",
+    "SWE": "Sweden",
+    "SCO": "Scotland",
+    "TUR": "Turkey",
 }
 
 
