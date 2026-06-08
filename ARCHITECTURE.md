@@ -27,9 +27,9 @@ The platform is three independent packages that communicate over REST:
 │                                                                  │
 │  Routers (app/api/v1/):                                          │
 │    auth · teams · matches · simulations · scenarios              │
-│    ml · world_cup · admin                                        │
+│    ml · rankings · world_cup · admin                             │
 │                                                                  │
-│  35 endpoints · OpenAPI at /docs                                 │
+│  39 endpoints · OpenAPI at /docs                                 │
 └──────────┬──────────────┬──────────────────┬────────────────────┘
            │              │                  │
      ┌─────▼─────┐  ┌─────▼──────┐   ┌──────▼──────────────────┐
@@ -39,9 +39,9 @@ The platform is three independent packages that communicate over REST:
      │           │  │  features  │   │ SQLite (dev)            │
      │elo.py     │  │  train     │   │ PostgreSQL (prod)       │
      │scoreline  │  │  predict   │   │                         │
-     │montecarlo │  │  ensemble  │   │ 13 tables               │
-     └─────┬─────┘  │  evaluate  │   │ 49,304 match records    │
-           │        │  retrain   │   │ 43 WC2026 teams         │
+     │montecarlo │  │  ensemble  │   │ 15 tables               │
+     └─────┬─────┘  │  evaluate  │   │ 49,306 match records    │
+           │        │  retrain   │   │ 48 WC2026 teams         │
            └────────┤            │   │ 5 trained models        │
                     └─────┬──────┘   └──────────────┬──────────┘
                           │                         │
@@ -56,7 +56,8 @@ The platform is three independent packages that communicate over REST:
                     │ Cache / Queue Layer                        │
                     │ Redis (cache + Celery broker)              │
                     │ Celery worker: run_simulation, ETL tasks   │
-                    │ Celery beat: daily results, weekly Elo     │
+                    │ Celery beat: daily results, weekly Elo,    │
+                    │ FIFA ranking monitor                      │
                     └───────────────────────────────────────────┘
 ```
 
@@ -91,8 +92,9 @@ wcip-backend/
 │   │   ├── team.py               Team, EloHistory
 │   │   ├── simulation.py         Simulation, SimulationRun, SavedScenario
 │   │   ├── player.py             Player (25 fields), Coach (13 fields)
-│   │   └── match_result.py       MatchResult, MatchFeatures,
-│   │                             MLModelRecord, QualifiedTeam
+│   │   ├── match_result.py       MatchResult, MatchFeatures,
+│   │   │                         MLModelRecord, QualifiedTeam
+│   │   └── ranking.py            FifaRankingSnapshot, FifaRankingEntry
 │   │
 │   ├── schemas/                  Pydantic v2 request/response models
 │   │
@@ -110,6 +112,7 @@ wcip-backend/
 │   │   ├── scenarios.py          scenario compare
 │   │   ├── ml.py                 predict, train, retrain, models, features,
 │   │   │                         explanations, etl/run
+│   │   ├── rankings.py           FIFA ranking snapshots + admin refresh
 │   │   ├── world_cup.py          qualified-teams, groups, bracket, simulate,
 │   │   │                         schedule, teams/{name}, players/{name}
 │   │   └── router.py             api_router — includes all sub-routers
@@ -142,21 +145,26 @@ wcip-backend/
 │
 └── etl/
     ├── pipeline.py               run_historical_results(), run_elo_update(),
+    │                             run_fifa_rankings_update(),
     │                             run_full_pipeline() + ETL state file
     ├── extract/
     │   ├── international_results.py  martj42 CSV download + cache + parse
     │   ├── elo_ratings.py            eloratings.net TSV + fallback snapshot
     │   ├── football_data.py          football-data.org API client
-    │   └── fifa_rankings.py          FIFA rankings + fallback snapshot
+    │   └── fifa_rankings.py          official FIFA ranking snapshots
     ├── transform/
     │   └── normalize.py          canonical(), normalize_match(), NAME_MAP (60+)
     ├── validation/
     │   └── schema.py             ValidatedMatch, validate_match(), validate_player()
     ├── load/
-    │   └── db_loader.py          load_match_results(), load_players(),
-    │                             load_qualified_teams()
+    │   ├── db_loader.py          load_match_results(), load_players(),
+    │   │                         load_qualified_teams()
+    │   └── ranking_loader.py     versioned FIFA ranking snapshot loader
+    ├── monitoring/
+    │   └── ranking_monitor.py    ranking change detection + retrain trigger
     └── schedulers/
-        └── celery_tasks.py       daily_results_update, weekly_elo_update, full_pipeline
+        └── celery_tasks.py       daily_results_update, weekly_elo_update,
+                                  fifa_rankings_update, full_pipeline
 ```
 
 ---
@@ -303,6 +311,18 @@ UQ(name, year)         │ coaches          │   │ bench_strength_diff  │
 └──────────────────┘
 ```
 
+Additional ranking tables:
+
+- `fifa_ranking_snapshots` stores one immutable FIFA publication with
+  `ranking_id`, `ranking_date`, `published_at`, `next_update_at`, `source_url`,
+  `source_hash`, `team_count`, and `is_current`.
+- `fifa_ranking_entries` stores team rank, previous rank, points, previous
+  points, rank movement, source team code, and raw source payload per snapshot.
+
+`teams.fifa_rank` is a current display cache only. Historical training,
+backtests, and tournament simulations should read ranking entries through the
+latest snapshot with `ranking_date <= match_date`.
+
 ---
 
 ## Prediction Request Flow
@@ -323,8 +343,8 @@ ml/ensemble.py :: predict_hybrid()
   │
   ├─ ml/features.py :: build_feature_vector()
   │     │
-  │     ├─ _get_team_elo()           ← teams table
-  │     ├─ _get_team_fifa_rank()     ← teams table
+  │     ├─ _get_team_elo()           ← elo_history as-of date, teams cache for current
+  │     ├─ _get_team_fifa_rank()     ← fifa_ranking_entries as-of date, teams cache for current
   │     ├─ _get_recent_match_stats() ← match_results aggregation (last 10)
   │     ├─ _get_form()               ← match_results aggregation (last 5 competitive)
   │     ├─ _get_squad_stats()        ← players table (defaults 0 if empty)
@@ -441,9 +461,19 @@ CLI / Admin API / Celery beat
   │       Batch commit every 500 rows
   │       Return: rows inserted
   │
-  └─ run_elo_update()
-      fetch_elo_ratings() → {team_name: elo_float}
-      UPDATE teams SET elo=... WHERE canonical(name) matches
+  ├─ run_elo_update()
+  │   fetch_elo_ratings() → {team_name: elo_float}
+  │   UPDATE teams SET elo=... WHERE canonical(name) matches
+  │
+  ├─ run_fifa_rankings_update(force_refresh)
+  │   fetch_fifa_ranking_snapshot() from official FIFA ranking metadata
+  │   validate unique teams/ranks and minimum snapshot size
+  │   INSERT/UPDATE fifa_ranking_snapshots by ranking_id
+  │   INSERT fifa_ranking_entries for each ranked team
+  │   UPDATE teams.fifa_rank only for the current display cache
+  │
+  └─ run_wc2026_seed()
+      Upsert teams, qualified_teams, placeholder players, and coaches
 ```
 
 ---
@@ -454,6 +484,7 @@ CLI / Admin API / Celery beat
 |---|---|---|
 | HTTP responses (teams list) | Redis (in-memory fallback) | 300s |
 | Downloaded CSV files | Local disk (`data/cache/`) | Until `force_refresh=True` |
+| FIFA ranking snapshots | Local disk cache + database snapshots | Disk until `force_refresh=True`; DB permanent |
 | Trained model objects | Python `lru_cache` (in-process) | Cleared by `invalidate_model_cache()` after retrain |
 | React Query | Browser memory | Stale-while-revalidate; keys per endpoint + params |
 

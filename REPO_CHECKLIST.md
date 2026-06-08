@@ -11,13 +11,15 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `etl/extract/international_results.py` — martj42 CSV download + caching + parse (49K rows)
 - ✅ `etl/extract/elo_ratings.py` — eloratings.net TSV fetch + embedded fallback snapshot
 - ✅ `etl/extract/football_data.py` — football-data.org API client (rate-limited 6.5s)
-- ✅ `etl/extract/fifa_rankings.py` — FIFA rankings with embedded fallback
+- ✅ `etl/extract/fifa_rankings.py` — official FIFA ranking snapshot fetch + validation
+- ✅ `etl/load/ranking_loader.py` — historical ranking snapshot loader
+- ✅ `etl/monitoring/ranking_monitor.py` — ranking change detection + retraining trigger
 - ✅ `etl/transform/normalize.py` — canonical name normalization (60+ variant spellings)
 - ✅ `etl/validation/schema.py` — ValidatedMatch dataclass, business-rule checks
 - ✅ `etl/load/db_loader.py` — idempotent upsert loaders (batch 500, in-run dedup)
-- ✅ `etl/schedulers/celery_tasks.py` — daily results + weekly Elo Celery tasks
+- ✅ `etl/schedulers/celery_tasks.py` — daily results, weekly Elo, daily FIFA ranking Celery tasks
 
-### Database Tables (13 total)
+### Database Tables (15 total)
 - ✅ `users` — accounts, roles, refresh tokens
 - ✅ `audit_logs` — admin audit trail
 - ✅ `teams` — team metadata, Elo, FIFA rank, confederation
@@ -27,10 +29,12 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `saved_scenarios` — user-saved scenario configurations
 - ✅ `players` — 25-field squad data (xG, xGA, injuries, caps, fitness)
 - ✅ `coaches` — formation, win%, tournament experience, impact score
-- ✅ `match_results` — 49,304 historical international matches (1872–2026)
+- ✅ `match_results` — 49,306 local historical international match rows (1872–2026)
 - ✅ `match_features` — pre-computed 17-feature vectors
 - ✅ `ml_models` — model registry with metrics + ensemble weights
 - ✅ `qualified_teams` — WC2026 qualification tracker (48/48, official groups loaded)
+- ✅ `fifa_ranking_snapshots` — immutable FIFA ranking publications
+- ✅ `fifa_ranking_entries` — team ranks, points, and movement per snapshot
 
 ### Data Quality
 - ✅ Unique constraint on (home_team, away_team, match_date) — duplicates rejected at DB level
@@ -39,7 +43,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ Incremental ETL with 7-day overlap window to catch late corrections
 - ✅ WC2026 validation script for official teams, groups, roster placeholders,
   coaches, prediction readiness, and tournament placement
-- 📋 Data versioning / snapshot tagging
+- ✅ FIFA ranking versioning / snapshot tagging
+- 📋 Historical FIFA ranking backfill before first snapshot ingestion date
+- 📋 Broader data versioning for non-ranking external sources
 - 📋 StatsBomb Open Data integration (xG, shot-level data)
 
 ---
@@ -50,8 +56,10 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `ml/features.py` — 17-feature engineering pipeline (v1)
 - ✅ All features as (home − away) differentials for sign-consistent interpretation
 - ✅ `build_feature_vector()` — real-time feature computation for any match
-- ✅ `build_feature_matrix_from_db()` — batch matrix for training (25,243 samples from 2000+)
+- ✅ `build_feature_matrix_from_db()` — batch matrix for training (25K+ samples from 2000+)
 - ✅ `persist_features()` — saves computed vector to `match_features` table
+- ✅ Point-in-time FIFA ranking lookup prevents current-rank leakage into historical rows
+- ✅ Point-in-time Elo lookup uses `elo_history` or neutral fallback for historical rows
 
 ### Models
 - ✅ Logistic Regression — Pipeline(StandardScaler + LogisticRegression); acc 57.68%, ll 0.923
@@ -162,6 +170,10 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /ml/feature-names` — feature name list
 - ✅ `GET /ml/explanations` — SHAP explanation
 - ✅ `POST /ml/etl/run` — trigger ETL (admin, async)
+- ✅ `GET /rankings/fifa/latest` — current stored FIFA ranking snapshot
+- ✅ `GET /rankings/fifa/snapshots` — list stored ranking snapshots
+- ✅ `GET /rankings/fifa/snapshots/{ranking_id}` — historical ranking snapshot
+- ✅ `POST /rankings/fifa/refresh` — admin refresh + optional retraining trigger
 
 ### World Cup 2026
 - ✅ `GET /world-cup/qualified-teams` — qualification list

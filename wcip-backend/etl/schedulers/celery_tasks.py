@@ -32,6 +32,22 @@ def weekly_elo_update(self):
         raise self.retry(exc=exc, countdown=60 * 30)
 
 
+@celery_app.task(name="etl.fifa_rankings_update", bind=True, max_retries=3)
+def fifa_rankings_update(self, force_refresh: bool = True, trigger_retraining: bool = True):
+    """Check for new official FIFA rankings and store a versioned snapshot."""
+    try:
+        from etl.monitoring.ranking_monitor import check_fifa_ranking_update
+
+        result = check_fifa_ranking_update(
+            force_refresh=force_refresh,
+            trigger_retraining=trigger_retraining,
+        )
+        return {"status": "ok", **result}
+    except Exception as exc:
+        logger.error("ETL FIFA ranking update failed: %s", exc)
+        raise self.retry(exc=exc, countdown=60 * 30)
+
+
 @celery_app.task(name="etl.full_pipeline", bind=True, max_retries=2)
 def full_pipeline(self, force_refresh: bool = False):
     """Run the complete ETL pipeline (triggered manually or on deploy)."""

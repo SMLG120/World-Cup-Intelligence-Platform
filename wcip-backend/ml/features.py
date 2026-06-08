@@ -6,7 +6,7 @@ always favours the home team.
 
 Feature list (v1):
   0  elo_diff
-  1  fifa_rank_diff          (negative = home team has better rank, inverted)
+  1  fifa_rank_diff          (positive = home team has better rank, inverted)
   2  xg_diff                 (last-10-match avg xG)
   3  xga_diff                (last-10-match avg xGA — negative = better defence)
   4  goals_scored_diff
@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List, NamedTuple, Optional
 
 import numpy as np
@@ -70,13 +70,37 @@ class FeatureVector(NamedTuple):
 # Team stat caches (populated from DB)
 # ---------------------------------------------------------------------------
 
-def _get_team_elo(team_name: str) -> float:
+def _asof_datetime(as_of_date: date | None) -> datetime | None:
+    if as_of_date is None:
+        return None
+    return datetime.combine(as_of_date, time.max).replace(tzinfo=timezone.utc)
+
+
+def _is_historical(as_of_date: date | None) -> bool:
+    return as_of_date is not None and as_of_date < date.today()
+
+
+def _get_team_elo(team_name: str, as_of_date: date | None = None) -> float:
     try:
         from sqlalchemy import select
         from app.db.base import SessionLocal
-        from app.models.team import Team
+        from app.models.team import EloHistory, Team
         db = SessionLocal()
         try:
+            asof = _asof_datetime(as_of_date)
+            if asof is not None:
+                historical = db.scalar(
+                    select(EloHistory)
+                    .join(Team, EloHistory.team_id == Team.id)
+                    .where(Team.name == team_name, EloHistory.recorded_at <= asof)
+                    .order_by(EloHistory.recorded_at.desc(), EloHistory.id.desc())
+                    .limit(1)
+                )
+                if historical:
+                    return historical.rating
+                if _is_historical(as_of_date):
+                    return 1500.0
+
             t = db.scalar(select(Team).where(Team.name == team_name))
             return t.elo if t else 1500.0
         finally:
@@ -85,13 +109,36 @@ def _get_team_elo(team_name: str) -> float:
         return 1500.0
 
 
-def _get_team_fifa_rank(team_name: str) -> int:
+def _get_team_fifa_rank(team_name: str, as_of_date: date | None = None) -> int:
     try:
         from sqlalchemy import select
         from app.db.base import SessionLocal
+        from app.models.ranking import FifaRankingEntry, FifaRankingSnapshot
         from app.models.team import Team
         db = SessionLocal()
         try:
+            snapshot = db.scalar(
+                select(FifaRankingSnapshot)
+                .where(
+                    FifaRankingSnapshot.ranking_date <= (as_of_date or date.today()),
+                )
+                .order_by(FifaRankingSnapshot.ranking_date.desc(), FifaRankingSnapshot.id.desc())
+                .limit(1)
+            )
+            if snapshot:
+                entry = db.scalar(
+                    select(FifaRankingEntry)
+                    .where(
+                        FifaRankingEntry.snapshot_id == snapshot.id,
+                        FifaRankingEntry.team_name == team_name,
+                    )
+                    .limit(1)
+                )
+                if entry:
+                    return entry.rank
+            if _is_historical(as_of_date):
+                return 100
+
             t = db.scalar(select(Team).where(Team.name == team_name))
             return t.fifa_rank if t else 100
         finally:
@@ -321,13 +368,13 @@ def build_feature_vector(
     ao = away_overrides or {}
 
     # Elo
-    h_elo = ho.get("elo", _get_team_elo(home_team))
-    a_elo = ao.get("elo", _get_team_elo(away_team))
+    h_elo = ho["elo"] if "elo" in ho else _get_team_elo(home_team, match_date)
+    a_elo = ao["elo"] if "elo" in ao else _get_team_elo(away_team, match_date)
     elo_diff = h_elo - a_elo
 
     # FIFA rank (lower = better, so invert)
-    h_rank = ho.get("fifa_rank", _get_team_fifa_rank(home_team))
-    a_rank = ao.get("fifa_rank", _get_team_fifa_rank(away_team))
+    h_rank = ho["fifa_rank"] if "fifa_rank" in ho else _get_team_fifa_rank(home_team, match_date)
+    a_rank = ao["fifa_rank"] if "fifa_rank" in ao else _get_team_fifa_rank(away_team, match_date)
     fifa_rank_diff = a_rank - h_rank  # positive = home has better rank
 
     # Recent match stats
@@ -415,8 +462,9 @@ def build_feature_matrix_from_db(
     """Build X (feature matrix) and y (labels) from all historical match results.
 
     Returns (X, y, match_ids) for ML training.
-    Uses a simplified/fast version without per-match Elo reconstruction to
-    avoid O(n²) complexity. Elo diff is approximated by current team Elo ratings.
+    Uses point-in-time FIFA ranking snapshots and Elo history when available.
+    If no historical snapshot exists for a match date, neutral defaults are
+    used instead of leaking today's team rank into old training rows.
     """
     from sqlalchemy import select
     from app.db.base import SessionLocal

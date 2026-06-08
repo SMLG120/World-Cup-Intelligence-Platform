@@ -9,7 +9,7 @@ celery_app = Celery(
     "wcip",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.workers.tasks"],
+    include=["app.workers.tasks", "etl.schedulers.celery_tasks"],
 )
 
 celery_app.conf.update(
@@ -30,5 +30,9 @@ celery_app.conf.beat_schedule = {
     "refresh-data-every-6h": {
         "task": "app.workers.tasks.refresh_data",
         "schedule": 6 * 60 * 60,
+    },
+    "check-fifa-rankings-daily": {
+        "task": "etl.fifa_rankings_update",
+        "schedule": 24 * 60 * 60,
     },
 }

@@ -20,6 +20,7 @@ router = APIRouter(prefix="/ml", tags=["ml"])
 
 class TeamOverrides(BaseModel):
     elo: Optional[float] = None
+    fifa_rank: Optional[int] = Field(None, ge=1, le=250)
     form: Optional[float] = Field(None, ge=0, le=3)
     injury_burden: Optional[float] = Field(None, ge=0, le=1)
     coach_impact: Optional[float] = Field(None, ge=0, le=2)

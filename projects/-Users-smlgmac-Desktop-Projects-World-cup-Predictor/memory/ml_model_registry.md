@@ -42,6 +42,22 @@ Note: features 7–16 default to 0 when player/coach tables are empty.
 `multi_class="multinomial"` removed from LogisticRegression (dropped in sklearn 1.5+).
 Current installed: sklearn 1.9.0, xgboost 3.2.0, lightgbm 4.6.0, catboost 1.2.10, shap 0.52.0.
 
+## FIFA Ranking Audit Note
+
+The active `v20260604` models predate the versioned FIFA ranking snapshot
+pipeline and point-in-time ranking lookup. During the June 2026 audit, the local
+DB had Brazil as FIFA rank #1 while the official FIFA men's ranking publication
+showed France #1 and Brazil #6. Treat these models as the current baseline, but
+retrain after:
+
+- loading the latest official FIFA ranking snapshot
+- backfilling historical FIFA ranking snapshots where possible
+- backfilling Elo history where possible
+
+The leakage guardrail now uses historical ranking snapshots with
+`ranking_date <= match_date`; missing historical periods use neutral ranking
+values instead of current ranks.
+
 ## Retraining
 
 ```bash
@@ -50,6 +66,8 @@ python -m ml.train --model all --full-refresh  # all history
 ```
 
 Or admin API: `POST /api/v1/ml/retrain {"model": "all"}`
+Ranking monitor trigger:
+`check_fifa_ranking_update(force_refresh=True, trigger_retraining=True)`
 
 **Why:** These are the production models. Weights are live in DB. If re-asked about model metrics, verify against DB rather than trusting this memory snapshot.
 **How to apply:** When helping with prediction accuracy questions or ensemble configuration, use these as the baseline metrics.

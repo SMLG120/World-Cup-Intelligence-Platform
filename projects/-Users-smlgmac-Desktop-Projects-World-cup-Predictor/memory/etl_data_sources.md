@@ -5,14 +5,27 @@ metadata:
   type: project
 ---
 
-## Live DB State (as of 2026-06-08 — post FIFA group audit)
+## Live DB State (as of 2026-06-08 — post FIFA ranking audit)
 
-- `match_results`: 49,304 rows — date range 1872-11-30 to 2026-06-03 from 327 unique teams
+- `match_results`: 49,306 rows — date range 1872-11-30 to 2026-06-03 from 327 unique teams
 - `qualified_teams`: 48 rows — official WC2026 field with Group A-L labels
 - `ml_models`: 5 rows — all active, trained 2026-06-04
 - `teams`: 57 rows — seeded from 2022 WC + 2026 qualifiers (12 new teams added by migration)
 - `players`: 48 startup placeholder rows until verified squad snapshot import
 - `coaches`: 48 startup placeholder rows until verified coach snapshot import
+- `fifa_ranking_snapshots`: 0 rows locally at audit time; migration and loader are ready
+- `fifa_ranking_entries`: 0 rows locally at audit time; populated by ranking snapshot ingestion
+
+## FIFA Ranking Audit (June 2026)
+
+- Latest official FIFA men's ranking publication checked during the audit: 2026-04-01
+- Next listed FIFA update during the audit: 2026-06-11
+- Official top status from FIFA article/page metadata: France #1, Spain #2,
+  Argentina #3, Portugal #5, Brazil #6
+- Local DB before ingestion: Brazil #1, Belgium #2, Argentina #3, France #4
+- Local cache before ingestion: Argentina #1, France #2, England #3, Belgium #4, Brazil #5
+- Fix: rankings now ingest into `fifa_ranking_snapshots` and
+  `fifa_ranking_entries`; `teams.fifa_rank` is current-display cache only
 
 ## WC2026 Official Participant List (48 teams)
 
@@ -65,23 +78,27 @@ Delete to force full refresh on next run.
 
 1. **martj42 CSV** — `https://github.com/martj42/international_results` — CC BY-SA 4.0
    - Cached at `wcip-backend/data/cache/results.csv`
-   - 49,306 rows parsed → 49,304 unique (2 in-run duplicates deduplicated)
+   - 49,306 local DB rows observed during the ranking audit
 2. **eloratings.net** — TSV at `https://www.eloratings.net/World.tsv`
    - **Note:** Cached TSV format changed (now uses 2-letter codes); old cache deleted.
    - Falls back to embedded `_ELO_FALLBACK` dict (~70 teams, June 2026 snapshot) if fetch fails.
    - `fetch_elo_ratings()` now falls through to HTTP fetch if cache parse yields empty.
-3. **football-data.org** — Optional API; requires `FOOTBALL_DATA_API_KEY`
-4. **FIFA standings** — Official WC2026 team/group reference
-5. **WC2026 placeholder seed** — one `world_cup_2026_placeholder` player and
+3. **Official FIFA men's rankings** — `https://inside.fifa.com/fifa-world-ranking/men`
+   - Extractor resolves the latest FIFA ranking schedule id and stores immutable snapshots
+   - Snapshot tables preserve ranks historically for features, backtests, and retraining
+4. **football-data.org** — Optional API; requires `FOOTBALL_DATA_API_KEY`
+5. **FIFA standings** — Official WC2026 team/group reference
+6. **WC2026 placeholder seed** — one `world_cup_2026_placeholder` player and
    coach per team for local startup; real imports replace placeholders by team
 
 ## Known Data Issues
 
 - Some CSV rows have NA scores (future matches) — ETL skips these correctly
 - Some teams appear under 2+ spelling variants; `normalize.py` NAME_MAP handles 80+ variants
-- Training window starts 2000-01-01 (25,243 of 49,304 total rows used for ML)
+- Active stored models were trained on 25,243 rows; current local feature generation sees 25,245 rows from 2000+
 - New WC2026 teams (Iraq, Curaçao, Haiti, Cape Verde, DR Congo) have sparse historical match data
 - Startup player/coach rows are placeholders, not verified squad or staff data
+- Historical FIFA ranking snapshots still need backfill; missing historical periods use neutral ranking values to avoid leakage
 
 ## Migration Script
 
@@ -90,6 +107,21 @@ Delete to force full refresh on next run.
 - Upserts 12 new teams to `qualified_teams` and `teams`
 - Applies canonical name renames in both tables
 - Patches Elo/FIFA rank from `_ELO_FALLBACK` / `_FIFA_RANK_FALLBACK`
+
+## Ranking Snapshot Migration
+
+`wcip-backend/alembic/versions/3f8b9d9c2a11_add_fifa_ranking_snapshots.py`
+adds:
+
+- `fifa_ranking_snapshots`
+- `fifa_ranking_entries`
+
+Run ranking ingestion with:
+
+```bash
+cd wcip-backend
+python -c "from etl.pipeline import run_fifa_rankings_update; print(run_fifa_rankings_update(force_refresh=True))"
+```
 
 **Why:** Production WC2026 dataset update — finalized qualification field.
 **How to apply:** When asked about WC2026 teams, use the 48-team official list and groups above as authoritative.

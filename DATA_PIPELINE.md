@@ -4,15 +4,16 @@
 
 ## Overview
 
-The ETL pipeline transforms raw international football data from three sources into
-a clean, deduplicated, validated match history and feature store that powers both
-the statistical prediction engine and the ML training pipeline.
+The ETL pipeline transforms raw international football data from four source
+families into clean, deduplicated, validated tables that power the statistical
+prediction engine, feature engineering, and ML training pipeline.
 
 ```
 Data Sources
      │
      ├─ martj42 CSV      (49K+ matches since 1872)
      ├─ eloratings.net   (current team Elo ratings)
+     ├─ FIFA rankings    (versioned men’s ranking snapshots)
      └─ football-data.org API  (squad data, optional)
      │
      ▼
@@ -25,9 +26,11 @@ Transform  (name normalisation + outcome labels)
 Validate   (schema + business rules)
      │
      ▼
-Load  ──── match_results (49,304 rows)
+Load  ──── match_results (49,306 local rows observed during audit)
       │    teams.elo (updated)
-      │    qualified_teams (43 WC2026 teams)
+      │    fifa_ranking_snapshots / fifa_ranking_entries (historical)
+      │    teams.fifa_rank (current display cache)
+      │    qualified_teams (48 WC2026 teams)
       │    players / coaches (when API key set)
       │
       ▼
@@ -36,7 +39,7 @@ Feature Engineering  ──── match_features (pre-computed)
       ▼
 ML Training
       │
-      ├─ 17-feature matrix (25,243 rows from 2000+)
+      ├─ 17-feature matrix (25K+ rows from 2000+)
       ├─ Time-series cross-validation (5 folds)
       ├─ 5 models trained + evaluated
       └─ models/*.pkl + ml_models registry
@@ -159,7 +162,10 @@ Idempotent upsert logic:
    `(home_team, away_team, match_date)` — skip if already loaded
 3. Accumulate `MatchResult` ORM objects; `db.add_all(batch)` + `db.commit()` every 500
 
-**Result:** 49,304 unique matches loaded from 49,306 parsed (2 in-run duplicates rejected).
+**Current local result during the ranking audit:** 49,306 match rows in
+`match_results`. Earlier pipeline runs documented 49,304 unique rows after
+deduplicating 2 duplicate source rows; always verify with the target database
+before publishing model metrics.
 
 ### Outcome Distribution in DB
 ```
@@ -202,7 +208,87 @@ fetch_elo_ratings(force_refresh=False) -> dict[str, float]
 
 ---
 
-## Source 3: Football-Data.org API
+## Source 3: FIFA Men's World Ranking Snapshots
+
+### Source Details
+- **Official page:** `https://inside.fifa.com/fifa-world-ranking/men`
+- **Ranking schedule payload:** resolved from FIFA page metadata, then fetched from
+  FIFA's ranking schedule API by `rankingScheduleId`
+- **Latest verified publication during this audit:** 01 April 2026
+- **Next listed FIFA update during this audit:** 11 June 2026
+- **Coverage:** FIFA men's national teams, ranks, previous ranks, points, and
+  publication metadata
+
+### Extract Step
+**File:** `etl/extract/fifa_rankings.py`
+
+```python
+fetch_fifa_ranking_snapshot(force_refresh=False) -> RankingSnapshot
+```
+
+1. Read the official FIFA ranking page metadata.
+2. Resolve the latest men’s ranking schedule id.
+3. Fetch the ranking payload for that schedule id.
+4. Normalize team names through `canonical()`.
+5. Preserve raw FIFA payload fragments in each entry for auditability.
+6. Validate minimum entry count, unique ranks, and unique teams.
+7. Cache the normalized snapshot at `data/cache/fifa_rankings.json`.
+
+The compatibility wrapper remains available:
+
+```python
+fetch_fifa_rankings(force_refresh=False) -> dict[str, int]
+```
+
+That wrapper returns `{team_name: rank}` for older call sites, but new code should
+use the snapshot function so publication date and source hash are preserved.
+
+### Load Step
+**File:** `etl/load/ranking_loader.py`
+
+```python
+load_latest_fifa_ranking_snapshot(force_refresh=False) -> dict
+load_fifa_ranking_snapshot(snapshot) -> dict
+```
+
+1. Upsert one row in `fifa_ranking_snapshots` keyed by FIFA `ranking_id`.
+2. Insert one row per team in `fifa_ranking_entries`.
+3. Keep prior ranking publications instead of overwriting them.
+4. Mark only the newest snapshot as `is_current=true`.
+5. Refresh `teams.fifa_rank` from the newest snapshot as a display/API cache.
+
+`teams.fifa_rank` is not a historical feature source. Historical training and
+backtests read `fifa_ranking_entries` through the latest snapshot with
+`ranking_date <= match_date`.
+
+### Monitoring Step
+**File:** `etl/monitoring/ranking_monitor.py`
+
+```python
+check_fifa_ranking_update(force_refresh=True, trigger_retraining=False) -> dict
+```
+
+The monitor fetches the official snapshot, compares it to the current stored
+snapshot, writes a new historical version if needed, and flags retraining when
+ranking changes are material:
+
+- any top-10 movement
+- rank delta of at least 5 inside the top 50
+- points delta of at least 25
+
+When `trigger_retraining=True`, material ranking updates call
+`ml.retrain.run_retrain(model_filter="all")`.
+
+### API Exposure
+
+- `GET /api/v1/rankings/fifa/latest`
+- `GET /api/v1/rankings/fifa/snapshots`
+- `GET /api/v1/rankings/fifa/snapshots/{ranking_id}`
+- `POST /api/v1/rankings/fifa/refresh` (admin)
+
+---
+
+## Source 4: Football-Data.org API
 
 ### Source Details
 - **Base URL:** `https://api.football-data.org/v4`
@@ -259,8 +345,14 @@ python -c "from etl.pipeline import run_historical_results; run_historical_resul
 # Manual full refresh
 python -c "from etl.pipeline import run_historical_results; run_historical_results(force_refresh=True)"
 
-# Full pipeline (results + Elo update)
+# Full pipeline (results + Elo + rankings + WC2026 seed)
 python -c "from etl.pipeline import run_full_pipeline; run_full_pipeline()"
+
+# Manual FIFA ranking snapshot refresh
+python -c "from etl.pipeline import run_fifa_rankings_update; print(run_fifa_rankings_update(force_refresh=True))"
+
+# Ranking monitor with optional retraining trigger
+python -c "from etl.monitoring.ranking_monitor import check_fifa_ranking_update; print(check_fifa_ranking_update(force_refresh=True, trigger_retraining=True))"
 
 # Admin API (async, admin token required)
 curl -X POST /api/v1/ml/etl/run -H "Authorization: Bearer <token>"
@@ -273,6 +365,7 @@ curl -X POST /api/v1/ml/etl/run -H "Authorization: Bearer <token>"
 |---|---|---|
 | `daily_results_update` | Daily | `run_historical_results()` incremental |
 | `weekly_elo_update` | Weekly | `run_elo_update()` from eloratings.net |
+| `fifa_rankings_update` | Daily | `check_fifa_ranking_update()` against official FIFA rankings |
 | `full_pipeline` | On-demand | `run_full_pipeline()` |
 
 ---
@@ -291,8 +384,18 @@ build_feature_vector(home_team, away_team, match_date,
 Called for every prediction request. Queries the DB for all 17 features and applies
 any overrides (from the Player Impact Lab or API request body).
 
-Override keys accepted: `elo`, `form`, `injury_burden`, `coach_impact`,
-`chemistry`, `fitness_score`.
+Override keys accepted: `elo`, `fifa_rank`, `form`, `injury_burden`,
+`coach_impact`, `chemistry`, `fitness_score`.
+
+For historical dates, `build_feature_vector()` reads:
+
+- the latest `fifa_ranking_snapshots.ranking_date <= match_date`
+- the latest `elo_history.recorded_at <= match_date`
+- only match results before `match_date` for form and recent-score features
+
+If a historical ranking or Elo snapshot is missing, the feature falls back to a
+neutral value instead of using current data. This prevents current rankings from
+leaking into old training rows.
 
 ### Batch (for training)
 
@@ -300,8 +403,10 @@ Override keys accepted: `elo`, `form`, `injury_burden`, `coach_impact`,
 build_feature_matrix_from_db(since_date, max_rows) -> (X, y, match_ids)
 ```
 
-Queries `match_results` joined with `match_features` (pre-computed) or
-computes features on-the-fly for rows not yet in `match_features`.
+Queries `match_results` joined with `match_features` (pre-computed) or computes
+features on-the-fly for rows not yet in `match_features`. On-the-fly computation
+passes each historical match date into `build_feature_vector()` so ranking and
+Elo lookups are point-in-time.
 
 Returns:
 - `X`: `np.ndarray` of shape `(N, 17)`
@@ -394,6 +499,9 @@ sees a match before training on it.
 | Duplicate (home, away, date) in DB | `load_match_results()` | Skip (SELECT EXISTS) |
 | DB-level enforcement | `match_results` table | `UniqueConstraint("home_team","away_team","match_date")` |
 | Team name variants | `canonical()` | Map to canonical (60+ variants) |
+| FIFA ranking snapshot size | `validate_ranking_snapshot()` | Reject too-small snapshots |
+| FIFA rank/team duplicates | `validate_ranking_snapshot()` | Reject duplicate rank or team keys |
+| Historical ranking leakage | `build_feature_vector()` | Use snapshot date <= match date or neutral fallback |
 
 ---
 
@@ -403,9 +511,11 @@ sees a match before training on it.
 results.csv (CC BY-SA 4.0)
     ↓  parse_results() + normalize_match() + validate_match()
     ↓  load_match_results()
-match_results (49,304 rows)
+match_results (49,306 local rows observed during audit)
     ↓  build_feature_matrix_from_db(since=2000-01-01)
-    ↓  [17 features × 25,243 rows]
+fifa_ranking_snapshots / fifa_ranking_entries
+    ↓  point-in-time ranking lookup
+    ↓  [17 features × 25K+ rows from 2000+]
 ML training (5 models)
     ↓  models/logistic.pkl
     ↓  models/random_forest.pkl
@@ -442,3 +552,12 @@ API response
    Teams that appear in the CSV under an unrecognised spelling will be stored under
    their raw name rather than the canonical form. This is non-destructive but may
    split a team's history across two keys.
+
+5. **Historical ranking backfill:** The snapshot pipeline preserves all new FIFA
+   ranking publications going forward. Older FIFA ranking publications must still
+   be backfilled if you want non-neutral `fifa_rank_diff` for pre-ingestion
+   training periods.
+
+6. **Elo history backfill:** `teams.elo` is current-state data. Historical feature
+   generation reads `elo_history` when available and otherwise uses neutral Elo
+   for past matches, so old rows are not contaminated by today’s ratings.

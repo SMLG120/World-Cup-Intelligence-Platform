@@ -100,6 +100,15 @@ def run_elo_update() -> dict:
     return {"updated_teams": updated, "source_teams": len(ratings)}
 
 
+def run_fifa_rankings_update(force_refresh: bool = False) -> dict:
+    """Fetch and store the latest official FIFA rankings as a versioned snapshot."""
+    from etl.load.ranking_loader import load_latest_fifa_ranking_snapshot
+
+    result = load_latest_fifa_ranking_snapshot(force_refresh=force_refresh)
+    logger.info("FIFA rankings update complete: %s", result)
+    return result
+
+
 def run_wc2026_seed(source_path: str | Path | None = None) -> dict:
     """Load WC2026 teams, players, and coaches from the dedicated seed ETL."""
     from etl.world_cup_2026.ingest import run_wc2026_seed as _run_wc2026_seed
@@ -123,6 +132,12 @@ def run_full_pipeline(force_refresh: bool = False) -> dict:
     except Exception as e:
         logger.error("Elo update failed: %s", e)
         results["elo_update_error"] = str(e)
+
+    try:
+        results["fifa_rankings"] = run_fifa_rankings_update(force_refresh=force_refresh)
+    except Exception as e:
+        logger.error("FIFA rankings update failed: %s", e)
+        results["fifa_rankings_error"] = str(e)
 
     try:
         results["wc2026_seed"] = run_wc2026_seed()

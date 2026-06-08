@@ -7,3 +7,10 @@
 Current WC2026 status is captured in `etl_data_sources.md`: official 48-team
 groups are loaded, and startup player/coach records are placeholders until a
 verified squad snapshot import replaces them.
+
+Current FIFA ranking status is captured in `etl_data_sources.md` and
+`ml_model_registry.md`: rankings are now versioned through
+`fifa_ranking_snapshots` and `fifa_ranking_entries`; `teams.fifa_rank` is only a
+current display cache. The June 2026 audit found Brazil incorrectly stored as
+local DB rank #1 while the latest official FIFA men's ranking publication showed
+France #1 and Brazil #6.

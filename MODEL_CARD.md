@@ -36,7 +36,7 @@ exploration of World Cup 2026.
 | Property | Value |
 |---|---|
 | Source | martj42 international_results dataset (CC BY-SA 4.0) |
-| Total historical rows | 49,304 matches (November 1872 – June 2026) |
+| Total historical rows | 49,304 at v20260604 training; 49,306 local rows observed on 2026-06-08 |
 | Training window | 2000-01-01 to 2026-06-04 |
 | Training samples | 25,243 matches |
 | Unique national teams | 327 |
@@ -62,7 +62,7 @@ All features are (home − away) differentials. Positive = favours home team.
 | Feature | Description | Data Source |
 |---|---|---|
 | `elo_diff` | Elo rating gap | eloratings.net via ETL |
-| `fifa_rank_diff` | FIFA rank gap (inverted: positive = home team ranked higher) | FIFA/embedded snapshot |
+| `fifa_rank_diff` | FIFA rank gap (inverted: positive = home team ranked higher) | Versioned FIFA ranking snapshots |
 | `xg_diff` | Mean xG last 10 matches | `match_results` aggregation |
 | `xga_diff` | Mean xGA last 10 (negative = better defence) | `match_results` aggregation |
 | `goals_scored_diff` | Mean goals scored last 10 | `match_results` aggregation |
@@ -84,6 +84,12 @@ football-data.org ETL runs with a valid API key. In that state, features 7–11 
 default to 0. This reduces their signal contribution but does not invalidate predictions
 — the model was trained on the same feature space where those values default to 0 when
 player data is unavailable.
+
+**Ranking leakage guardrail:** Historical feature generation reads the latest
+stored FIFA ranking snapshot with `ranking_date <= match_date`. If no historical
+snapshot exists for that match date, `fifa_rank_diff` falls back to a neutral
+value rather than using the current ranking. Elo uses the same point-in-time
+pattern through `elo_history`.
 
 ---
 
@@ -183,6 +189,16 @@ The 30/70 statistical/ML blend consistently narrows the gap between models and t
 statistical baseline without sacrificing calibration. On Argentina vs France (held-out
 example): statistical 51.3% / 24.5% / 24.2%, ensemble 59.9% / 22.7% / 17.3%.
 
+### Ranking Audit Note
+
+The stored `v20260604` models were trained before the FIFA ranking snapshot
+pipeline and point-in-time ranking lookup were added. During the June 2026 audit,
+the local `teams` table had Brazil ranked #1, while the current official FIFA
+men’s ranking publication identified France as #1 and Brazil as #6. The old
+models should therefore be treated as a baseline until official ranking snapshots
+are ingested, historical ranking snapshots are backfilled where possible, and
+the ensemble is retrained.
+
 ---
 
 ## Model Selection Process
@@ -231,6 +247,11 @@ these teams carry higher uncertainty.
 known state. Late team news (injury in final training session, late call-ups) is not
 automatically reflected unless the player record is updated via the API before prediction.
 
+**Historical ranking coverage.** The new ranking pipeline versions snapshots
+going forward. Older FIFA ranking publications need a backfill before
+`fifa_rank_diff` can carry historical signal for all training rows. Until then,
+missing historical periods use neutral ranking values to avoid data leakage.
+
 ---
 
 ## Known Failure Cases
@@ -253,12 +274,15 @@ automatically reflected unless the player record is updated via the API before p
 | Trigger | Command | Description |
 |---|---|---|
 | Admin API | `POST /api/v1/ml/retrain {"model": "all"}` | Incremental retrain on new data |
+| Ranking monitor | `check_fifa_ranking_update(trigger_retraining=True)` | Retrain after material FIFA ranking movement |
 | Manual | `python -m ml.train --model all` | Full retrain from CLI |
 | Full refresh | `python -m ml.train --model all --full-refresh` | Re-reads all history |
 
-There is no automated scheduled retraining. The recommended cadence is:
+Recommended cadence:
 - After each major international window (every ~3 months)
 - After loading a new batch of historical results via ETL
+- After a material FIFA ranking snapshot update
+- After historical FIFA ranking or Elo snapshots are backfilled
 
 ---
 
@@ -296,4 +320,4 @@ on the target version. The ensemble weight calculation will update on next predi
 | martj42 international_results | CC BY-SA 4.0 | Attribution required; share-alike |
 | eloratings.net | Public data | Attribution requested; no scraping restriction documented |
 | football-data.org | Free tier ToS | Rate-limited; commercial tiers for production use |
-| FIFA Rankings | Public data | No official API; using approximate snapshot |
+| FIFA Rankings | Public display data | Ingest from FIFA ranking page/schedule payload; preserve source URL, schedule id, and snapshot hash |

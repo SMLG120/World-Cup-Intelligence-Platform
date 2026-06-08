@@ -23,6 +23,7 @@ The important flow is:
 ```text
 Raw football data
   -> ETL extract/transform/validate/load
+  -> versioned FIFA ranking snapshots
   -> SQLite or Postgres tables
   -> feature engineering
   -> statistical engine + ML models
@@ -62,8 +63,12 @@ Step by step:
 2. `etl/transform/normalize.py` canonicalizes team names.
 3. `etl/validation/schema.py` rejects malformed matches.
 4. `etl/load/db_loader.py` upserts rows into `match_results`.
-5. `run_elo_update()` refreshes `teams.elo`.
-6. `run_full_pipeline()` runs historical results, Elo update, and the WC2026 seed.
+5. `run_elo_update()` refreshes the current display Elo values in `teams.elo`.
+6. `run_fifa_rankings_update()` fetches the latest official FIFA ranking
+   publication, validates it, stores it as a timestamped snapshot, and refreshes
+   `teams.fifa_rank` as a display cache.
+7. `run_full_pipeline()` runs historical results, Elo update, FIFA ranking
+   snapshot ingestion, and the WC2026 seed.
 
 Useful commands:
 
@@ -71,10 +76,51 @@ Useful commands:
 cd wcip-backend
 python -c "from etl.pipeline import run_historical_results; run_historical_results()"
 python -c "from etl.pipeline import run_elo_update; print(run_elo_update())"
+python -c "from etl.pipeline import run_fifa_rankings_update; print(run_fifa_rankings_update(force_refresh=True))"
 python -c "from etl.pipeline import run_full_pipeline; print(run_full_pipeline())"
 ```
 
-### 3. WC2026 Seed ETL
+### 3. FIFA Ranking Snapshot ETL
+
+FIFA rankings are no longer manually maintained. The ranking pipeline lives in
+`wcip-backend/etl/extract/fifa_rankings.py`,
+`wcip-backend/etl/load/ranking_loader.py`, and
+`wcip-backend/etl/monitoring/ranking_monitor.py`.
+
+Step by step:
+
+1. The extractor reads the official FIFA ranking page metadata.
+2. It resolves the latest men’s ranking schedule id.
+3. It downloads the corresponding FIFA ranking payload.
+4. It normalizes team names through the same canonical-name layer used by match
+   results.
+5. It validates that ranks and teams are unique and that the snapshot has enough
+   entries to be credible.
+6. The loader writes one row to `fifa_ranking_snapshots` and one row per team to
+   `fifa_ranking_entries`.
+7. Older snapshots remain in the database for reproducible feature generation,
+   backtesting, Elo recalibration, tournament simulations, and ML training.
+8. The newest snapshot updates `teams.fifa_rank` only as a current UI/API cache.
+
+Run a ranking refresh:
+
+```bash
+cd wcip-backend
+python -c "from etl.pipeline import run_fifa_rankings_update; print(run_fifa_rankings_update(force_refresh=True))"
+```
+
+Check for changes and optionally trigger retraining:
+
+```bash
+cd wcip-backend
+python -c "from etl.monitoring.ranking_monitor import check_fifa_ranking_update; print(check_fifa_ranking_update(force_refresh=True, trigger_retraining=True))"
+```
+
+The Celery beat scheduler also runs `fifa_rankings_update` daily. Material
+changes are defined as top-10 movement, a rank delta of at least 5 inside the top
+50, or a points delta of at least 25.
+
+### 4. WC2026 Seed ETL
 
 The World Cup 2026 seed pipeline is isolated from the generic football-data ETL.
 That makes tournament roster updates easier and keeps API-Football snapshots from
@@ -166,14 +212,15 @@ The normalizer maps known variants such as `Czech Republic` to `Czechia`, so the
 database stays consistent across historical results, API payloads, and frontend
 selectors.
 
-### 4. Feature Engineering And ML
+### 5. Feature Engineering And ML
 
 Feature generation lives in `wcip-backend/ml/features.py`.
 
 The feature layer builds home-minus-away differentials such as:
 
 - Elo difference
-- FIFA rank difference
+- FIFA rank difference from the latest ranking snapshot on or before the match
+  date
 - recent form
 - squad market value
 - injury burden
@@ -181,6 +228,11 @@ The feature layer builds home-minus-away differentials such as:
 - average age
 - tournament experience
 - starting XI and bench strength
+
+Historical feature generation uses point-in-time FIFA ranking snapshots and Elo
+history when available. It does not use today’s rankings for old matches. If a
+historical snapshot is missing, ranking/Elo features fall back to neutral values
+instead of leaking current data into training.
 
 Training uses `wcip-backend/ml/train.py`. Model records are stored in the
 `ml_models` table and model files are written under `wcip-backend/models`.
@@ -194,7 +246,7 @@ python -m ml.train --model catboost
 python -m ml.train --model all --full-refresh
 ```
 
-### 5. Prediction Runtime
+### 6. Prediction Runtime
 
 The service bridge is `wcip-backend/app/services/prediction.py`.
 
@@ -295,6 +347,10 @@ All backend API routes use the `/api/v1` prefix.
 | `POST` | `/ml/train` | Trigger model training |
 | `POST` | `/ml/retrain` | Trigger retraining |
 | `POST` | `/ml/etl/run` | Trigger the ETL pipeline |
+| `GET` | `/rankings/fifa/latest` | Current stored FIFA ranking snapshot |
+| `GET` | `/rankings/fifa/snapshots` | List stored FIFA ranking snapshots |
+| `GET` | `/rankings/fifa/snapshots/{ranking_id}` | Fetch one historical ranking snapshot |
+| `POST` | `/rankings/fifa/refresh` | Admin ranking refresh and optional retrain trigger |
 | `GET` | `/world-cup/qualified-teams` | WC2026 qualified-team list |
 | `GET` | `/world-cup/groups` | WC2026 groups or pending draw status |
 | `GET` | `/world-cup/bracket` | WC2026 knockout bracket |
@@ -371,6 +427,19 @@ cd wcip-backend
 python -c "from etl.pipeline import run_elo_update; print(run_elo_update())"
 ```
 
+### Refresh FIFA Ranking Snapshots
+
+```bash
+cd wcip-backend
+python -c "from etl.pipeline import run_fifa_rankings_update; print(run_fifa_rankings_update(force_refresh=True))"
+```
+
+Inspect the current stored snapshot:
+
+```bash
+curl http://localhost:8000/api/v1/rankings/fifa/latest?limit=10
+```
+
 ### Seed WC2026 Teams, Players, And Coaches
 
 ```bash
@@ -416,6 +485,8 @@ curl -X POST http://localhost:8000/api/v1/tournament/simulate \
 ├── DATA_PIPELINE.md
 ├── MODEL_CARD.md
 ├── ARCHITECTURE.md
+├── API.md
+├── FIFA_RANKINGS_AUDIT.md
 ├── world_cup_2026_audit.md
 ├── wcip-backend
 │   ├── app
@@ -476,6 +547,9 @@ outside the sandbox if you see `PermissionError: Operation not permitted` from
 
 - International match results: `martj42/international_results`
 - Elo ratings: `eloratings.net`
+- FIFA men’s rankings: official FIFA ranking page and ranking schedule payload,
+  stored as immutable snapshots in `fifa_ranking_snapshots` and
+  `fifa_ranking_entries`
 - Official WC2026 teams/groups: FIFA standings reference
 - WC2026 live/squad/team data: API-Football / API-SPORTS, `league=1`,
   `season=2026`
