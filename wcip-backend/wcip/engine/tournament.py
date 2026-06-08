@@ -132,11 +132,22 @@ class TournamentEngine:
         # 1. Group stage.
         tables: Dict[str, List[GroupRow]] = {}
         positions: Dict[str, str] = {}
+        third_place_rows: List[GroupRow] = []
         for label, group_teams in self.groups.items():
             ranked = self._play_group(group_teams)
             tables[label] = ranked
             positions[f"1{label}"] = ranked[0].team
             positions[f"2{label}"] = ranked[1].team
+            if len(ranked) > 2:
+                third_place_rows.append(ranked[2])
+
+        best_thirds = sorted(
+            third_place_rows,
+            key=lambda r: (r.points, r.gd, r.gf),
+            reverse=True,
+        )
+        for i, row in enumerate(best_thirds[:8], start=1):
+            positions[f"B3_{i}"] = row.team
 
         # 2. Knockout.
         knockout: Dict[str, MatchResult] = {}
@@ -155,15 +166,13 @@ class TournamentEngine:
         champion = winners["FINAL"]
         final_res = knockout["FINAL"]
         runner_up = final_res.away if final_res.winner == final_res.home else final_res.home
+        semi_ids = self._previous_match_ids("FINAL")
+        quarter_ids = self._previous_match_ids(*semi_ids)
+        round_of_16_ids = self._previous_match_ids(*quarter_ids)
 
-        sf = [knockout["M61"].home, knockout["M61"].away,
-              knockout["M62"].home, knockout["M62"].away]
-        qf = [knockout[m].home for m in ("M57", "M58", "M59", "M60")] + \
-             [knockout[m].away for m in ("M57", "M58", "M59", "M60")]
-        r16 = [knockout[m].home for m in
-               ("M49", "M50", "M51", "M52", "M53", "M54", "M55", "M56")] + \
-              [knockout[m].away for m in
-               ("M49", "M50", "M51", "M52", "M53", "M54", "M55", "M56")]
+        sf = self._participants(knockout, semi_ids)
+        qf = self._participants(knockout, quarter_ids)
+        r16 = self._participants(knockout, round_of_16_ids)
 
         return TournamentResult(
             group_tables=tables,
@@ -174,3 +183,23 @@ class TournamentEngine:
             quarter_finalists=qf,
             round_of_16=r16,
         )
+
+    def _previous_match_ids(self, *match_ids: str) -> List[str]:
+        """Return match refs that feed the given downstream matches."""
+        wanted = set(match_ids)
+        previous: List[str] = []
+        for match_id, slot_a, slot_b in self.bracket:
+            if match_id not in wanted:
+                continue
+            for kind, ref in (slot_a, slot_b):
+                if kind == "match":
+                    previous.append(ref)
+        return previous
+
+    @staticmethod
+    def _participants(knockout: Dict[str, MatchResult], match_ids: List[str]) -> List[str]:
+        participants: List[str] = []
+        for match_id in match_ids:
+            if match_id in knockout:
+                participants.extend([knockout[match_id].home, knockout[match_id].away])
+        return participants

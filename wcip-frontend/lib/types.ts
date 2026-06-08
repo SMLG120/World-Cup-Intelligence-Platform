@@ -228,6 +228,7 @@ export interface TeamDetail {
     formation: string | null;
     win_pct: number | null;
     impact_score: number;
+    data_source?: string | null;
   };
   squad_size: number;
   injured_count: number;
@@ -237,9 +238,11 @@ export interface TeamDetail {
 export interface Player {
   id: number;
   name: string;
+  team_name?: string;
   position: string;
   club: string | null;
   age: number | null;
+  nationality?: string | null;
   goals: number;
   assists: number;
   xg: number;
@@ -250,5 +253,7 @@ export interface Player {
   injured: boolean;
   suspended: boolean;
   fitness_score: number;
+  recent_form_score?: number;
+  data_source?: string | null;
   market_value_eur: number | null;
 }

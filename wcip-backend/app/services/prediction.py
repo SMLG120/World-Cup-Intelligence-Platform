@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from app.core.config import settings
-from wcip.data.teams_2022 import BRACKET_2022, GROUPS_2022, build_teams
+from wcip.data.teams_2022 import BRACKET_2022, GROUPS_2022, Team, build_teams
 from wcip.engine.explain import explain_match
 from wcip.engine.match import MatchSimulator
 from wcip.engine.montecarlo import MonteCarloEngine
@@ -52,6 +52,8 @@ def _profile(team_obj, mods: Optional[dict]) -> TeamMatchProfile:
 def predict_match(home: str, away: str, home_mods: dict, away_mods: dict,
                   edition: str = "2022") -> dict:
     teams, _, _ = _edition(edition)
+    _ensure_team(teams, home)
+    _ensure_team(teams, away)
     if home not in teams:
         raise UnknownTeam(home)
     if away not in teams:
@@ -74,6 +76,59 @@ def predict_match(home: str, away: str, home_mods: dict, away_mods: dict,
             for f in exp.factors
         ],
     }
+
+
+def _ensure_team(teams: Dict[str, object], name: str) -> None:
+    if name in teams:
+        return
+
+    loaded = _load_team_profile(name)
+    if loaded:
+        teams[name] = loaded
+
+
+def _load_team_profile(name: str):
+    try:
+        from sqlalchemy import select
+        from app.db.base import SessionLocal
+        from app.models.team import Team as DBTeam
+
+        db = SessionLocal()
+        try:
+            row = db.scalar(select(DBTeam).where(DBTeam.name == name))
+            if row:
+                return Team(
+                    name=row.name,
+                    code=row.code,
+                    confederation=row.confederation,
+                    elo=row.elo,
+                    fifa_rank=row.fifa_rank,
+                    attack=row.attack,
+                    defence=row.defence,
+                    chemistry=row.chemistry,
+                    coach_quality=row.coach_quality,
+                )
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    try:
+        from wcip.data.wc2026 import CONFIRMED_QUALIFIERS
+
+        for raw in CONFIRMED_QUALIFIERS:
+            if raw["team_name"] == name:
+                return Team(
+                    name=raw["team_name"],
+                    code=raw.get("team_code", "???"),
+                    confederation=raw.get("confederation", ""),
+                    elo=float(raw.get("elo", 1500.0)),
+                    fifa_rank=int(raw.get("fifa_rank", 100)),
+                )
+    except Exception:
+        pass
+
+    return None
 
 
 def _apply_overrides(teams: Dict[str, object], overrides: dict) -> None:

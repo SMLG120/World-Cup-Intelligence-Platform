@@ -7,6 +7,7 @@ run-to-run variance.
 from __future__ import annotations
 
 import math
+import logging
 import os
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
@@ -18,6 +19,8 @@ import numpy as np
 from .match import MatchSimulator
 from .scoreline import ScorelineModel
 from .tournament import TournamentEngine
+
+logger = logging.getLogger(__name__)
 
 # Representative finishing position for each elimination round (averaged ties).
 _FINISH_POSITION = {
@@ -155,8 +158,23 @@ class MonteCarloEngine:
         if workers == 1 or len(chunks) == 1:
             partials = [_run_chunk(a) for a in args]
         else:
-            with ProcessPoolExecutor(max_workers=workers) as ex:
-                partials = list(ex.map(_run_chunk, args))
+            try:
+                with ProcessPoolExecutor(max_workers=workers) as ex:
+                    partials = list(ex.map(_run_chunk, args))
+            except (PermissionError, NotImplementedError, OSError) as exc:
+                logger.warning(
+                    "Multiprocess Monte Carlo unavailable (%s); falling back to one worker",
+                    exc,
+                )
+                partials = [_run_chunk((
+                    n_runs,
+                    np.random.SeedSequence(seed),
+                    self.teams,
+                    self.groups,
+                    self.bracket,
+                    model_kwargs,
+                    self.elo_overrides,
+                ))]
 
         return self._aggregate(partials, n_runs)
 

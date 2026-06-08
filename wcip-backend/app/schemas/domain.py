@@ -28,6 +28,30 @@ class TeamOut(BaseModel):
     fifa_rank: int
 
 
+class PlayerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    team_name: str
+    position: str
+    club: Optional[str]
+    age: Optional[int]
+    nationality: Optional[str]
+    minutes_played: float
+    goals: float
+    assists: float
+    xg: float
+    xag: float
+    market_value_eur: Optional[float]
+    international_caps: int
+    international_goals: int
+    injured: bool
+    suspended: bool
+    fitness_score: float
+    recent_form_score: float
+    data_source: Optional[str]
+
+
 class EloPoint(BaseModel):
     rating: float
     opponent: Optional[str]

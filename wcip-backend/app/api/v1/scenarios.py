@@ -20,6 +20,29 @@ def compare(req: ScenarioCompareRequest):
          "overrides": {k: v.model_dump() for k, v in s.overrides.items()}}
         for s in req.scenarios
     ]
+    if _is_wc2026(req.edition):
+        if req.runs < 100:
+            raise HTTPException(422, "runs must be at least 100 for WC2026 scenarios")
+        from app.api.v1.world_cup import SimulateRequest, simulate_tournament as simulate_world_cup
+
+        return {
+            "edition": "2026",
+            "runs": req.runs,
+            "scenarios": [
+                {
+                    "label": scenario["label"],
+                    "result": simulate_world_cup(
+                        SimulateRequest(
+                            year=2026,
+                            runs=req.runs,
+                            overrides=scenario["overrides"],
+                        )
+                    ),
+                }
+                for scenario in scenarios
+            ],
+        }
+
     try:
         return prediction.compare_scenarios(req.edition, req.runs, scenarios)
     except prediction.UnknownEdition as exc:
@@ -28,7 +51,14 @@ def compare(req: ScenarioCompareRequest):
 
 @router.get("/editions")
 def editions():
-    return {"editions": prediction.list_editions()}
+    editions = prediction.list_editions()
+    if "2026" not in editions:
+        editions.append("2026")
+    return {"editions": editions}
+
+
+def _is_wc2026(edition: str) -> bool:
+    return edition.strip().lower() in {"2026", "wc2026", "world-cup-2026", "world_cup_2026"}
 
 
 # --- admin ------------------------------------------------------------------

@@ -296,6 +296,7 @@ def get_team_detail(team_name: str) -> Dict[str, Any]:
                 "formation": coach.preferred_formation if coach else None,
                 "win_pct": coach.win_pct if coach else None,
                 "impact_score": coach.impact_score if coach else 1.0,
+                "data_source": coach.data_source if coach else None,
             },
             "squad_size": len(players),
             "injured_count": sum(1 for p in players if p.injured),
@@ -326,9 +327,11 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
                 {
                     "id": p.id,
                     "name": p.name,
+                    "team_name": p.team_name,
                     "position": p.position,
                     "club": p.club,
                     "age": p.age,
+                    "nationality": p.nationality,
                     "goals": p.goals,
                     "assists": p.assists,
                     "xg": p.xg,
@@ -339,7 +342,9 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
                     "injured": p.injured,
                     "suspended": p.suspended,
                     "fitness_score": p.fitness_score,
+                    "recent_form_score": p.recent_form_score,
                     "market_value_eur": p.market_value_eur,
+                    "data_source": p.data_source,
                 }
                 for p in players
             ],

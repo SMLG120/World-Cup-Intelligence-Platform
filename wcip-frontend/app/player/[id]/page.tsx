@@ -8,7 +8,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell,
 } from "recharts";
-import { useWC2026Players } from "@/lib/queries";
+import { usePlayer, useWC2026Players } from "@/lib/queries";
 import type { Player } from "@/lib/types";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,24 +102,20 @@ function StatBar({ label, value, max, colour = "hsl(var(--pitch))" }: {
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const playerId = Number(id);
   const searchParams = useSearchParams();
-  const teamName = searchParams.get("team") ?? "";
+  const fallbackTeamName = searchParams.get("team") ?? "";
 
-  const { data: squadData, isLoading, isError } = useWC2026Players(teamName, !!teamName);
+  const directPlayer = usePlayer(playerId);
+  const { data: squadData, isLoading: squadLoading, isError: squadError } = useWC2026Players(
+    fallbackTeamName,
+    !directPlayer.data && !directPlayer.isLoading && !!fallbackTeamName,
+  );
 
-  const player = squadData?.squad.find((p) => String(p.id) === id) ?? null;
+  const player = directPlayer.data ?? squadData?.squad.find((p) => String(p.id) === id) ?? null;
+  const teamName = directPlayer.data?.team_name ?? fallbackTeamName;
 
-  if (!teamName) {
-    return (
-      <div className="py-16 text-center">
-        <h1 className="display text-2xl mb-2">Team required</h1>
-        <p className="text-muted mb-4">Navigate to a player from a team page.</p>
-        <Link href="/teams"><Button variant="outline">Browse teams</Button></Link>
-      </div>
-    );
-  }
-
-  if (isLoading) {
+  if (directPlayer.isLoading || squadLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-12 w-64" />
@@ -131,7 +127,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  if (isError || !squadData) {
+  if (!directPlayer.data && fallbackTeamName && (squadError || !squadData)) {
     return (
       <div className="py-16 text-center">
         <p className="text-signal mb-4">Failed to load squad data.</p>
@@ -153,6 +149,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     : ["CB", "LB", "RB", "LWB", "RWB"].includes(player.position) ? "hsl(200 90% 62%)"
     : ["CM", "CDM", "CAM", "LM", "RM"].includes(player.position) ? "hsl(280 70% 68%)"
     : "hsl(var(--pitch))";
+  const isPlaceholder = player.data_source === "world_cup_2026_placeholder";
 
   return (
     <div className="space-y-8">
@@ -182,9 +179,22 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             {player.suspended && (
               <span className="text-xs bg-[hsl(45_95%_58%/0.2)] border border-[hsl(45_95%_58%/0.4)] text-[hsl(45_95%_58%)] px-2 py-0.5 rounded">Suspended</span>
             )}
+            {isPlaceholder && (
+              <span className="text-xs border border-line px-2 py-0.5 rounded text-muted">Placeholder</span>
+            )}
           </div>
         </div>
       </motion.header>
+
+      {isPlaceholder && (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-muted">
+              This is a placeholder record so local data loads stay stable until a verified WC2026 roster snapshot is imported.
+            </p>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Core stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -5,27 +5,42 @@ metadata:
   type: project
 ---
 
-## Live DB State (as of 2026-06-05 — post WC2026 migration)
+## Live DB State (as of 2026-06-08 — post FIFA group audit)
 
 - `match_results`: 49,304 rows — date range 1872-11-30 to 2026-06-03 from 327 unique teams
-- `qualified_teams`: 52 rows — WC2026 finalized field (Italy/Poland/Denmark removed; 12 new nations added)
+- `qualified_teams`: 48 rows — official WC2026 field with Group A-L labels
 - `ml_models`: 5 rows — all active, trained 2026-06-04
 - `teams`: 57 rows — seeded from 2022 WC + 2026 qualifiers (12 new teams added by migration)
-- `players`: 0 rows — requires FOOTBALL_DATA_API_KEY in .env to populate
-- `coaches`: 0 rows — requires FOOTBALL_DATA_API_KEY in .env to populate
+- `players`: 48 startup placeholder rows until verified squad snapshot import
+- `coaches`: 48 startup placeholder rows until verified coach snapshot import
 
-## WC2026 Finalized Participant List (52 confirmed)
+## WC2026 Official Participant List (48 teams)
 
 | Confederation | Count | Teams |
 |---|---|---|
-| UEFA (17) | 17 | Germany, Portugal, France, Spain, England, Netherlands, Belgium, Croatia, Austria, Switzerland, Turkey, Serbia, Scotland, Norway, Sweden, Czechia, Bosnia and Herzegovina |
-| CAF (12) | 12 | Morocco, Senegal, Egypt, Nigeria, Ivory Coast, Cameroon, Ghana, Tunisia, South Africa, Algeria, Cape Verde, DR Congo |
+| UEFA (16) | 16 | Czechia, Bosnia and Herzegovina, Switzerland, Scotland, Turkey, Germany, Netherlands, Sweden, Belgium, Spain, Norway, France, Austria, Portugal, England, Croatia |
+| CAF (10) | 10 | South Africa, Morocco, Ivory Coast, Tunisia, Egypt, Cape Verde, Senegal, Algeria, DR Congo, Ghana |
 | AFC (9) | 9 | Japan, South Korea, Iran, Australia, Saudi Arabia, Qatar, Uzbekistan, Jordan, Iraq |
-| CONMEBOL (7) | 7 | Argentina, Brazil, Colombia, Uruguay, Ecuador, Venezuela, Paraguay |
+| CONMEBOL (6) | 6 | Brazil, Paraguay, Ecuador, Uruguay, Argentina, Colombia |
 | CONCACAF (6) | 6 | United States, Canada, Mexico, Panama, Haiti, Curaçao |
 | OFC (1) | 1 | New Zealand |
 
-**Removed (did not qualify):** Italy, Poland, Denmark
+**Removed from stale local data:** Italy, Poland, Denmark, Nigeria, Cameroon, Serbia, Venezuela
+
+## WC2026 Official Groups
+
+- Group A: Mexico, South Africa, South Korea, Czechia
+- Group B: Canada, Bosnia and Herzegovina, Qatar, Switzerland
+- Group C: Brazil, Morocco, Haiti, Scotland
+- Group D: United States, Paraguay, Australia, Turkey
+- Group E: Germany, Curaçao, Ivory Coast, Ecuador
+- Group F: Netherlands, Japan, Sweden, Tunisia
+- Group G: Belgium, Egypt, Iran, New Zealand
+- Group H: Spain, Cape Verde, Saudi Arabia, Uruguay
+- Group I: France, Senegal, Iraq, Norway
+- Group J: Argentina, Algeria, Austria, Jordan
+- Group K: Portugal, DR Congo, Uzbekistan, Colombia
+- Group L: England, Croatia, Ghana, Panama
 
 ## Canonical Name Changes (June 2026)
 
@@ -56,6 +71,9 @@ Delete to force full refresh on next run.
    - Falls back to embedded `_ELO_FALLBACK` dict (~70 teams, June 2026 snapshot) if fetch fails.
    - `fetch_elo_ratings()` now falls through to HTTP fetch if cache parse yields empty.
 3. **football-data.org** — Optional API; requires `FOOTBALL_DATA_API_KEY`
+4. **FIFA standings** — Official WC2026 team/group reference
+5. **WC2026 placeholder seed** — one `world_cup_2026_placeholder` player and
+   coach per team for local startup; real imports replace placeholders by team
 
 ## Known Data Issues
 
@@ -63,6 +81,7 @@ Delete to force full refresh on next run.
 - Some teams appear under 2+ spelling variants; `normalize.py` NAME_MAP handles 80+ variants
 - Training window starts 2000-01-01 (25,243 of 49,304 total rows used for ML)
 - New WC2026 teams (Iraq, Curaçao, Haiti, Cape Verde, DR Congo) have sparse historical match data
+- Startup player/coach rows are placeholders, not verified squad or staff data
 
 ## Migration Script
 
@@ -73,4 +92,4 @@ Delete to force full refresh on next run.
 - Patches Elo/FIFA rank from `_ELO_FALLBACK` / `_FIFA_RANK_FALLBACK`
 
 **Why:** Production WC2026 dataset update — finalized qualification field.
-**How to apply:** When asked about WC2026 teams, use the 52-team list above as authoritative.
+**How to apply:** When asked about WC2026 teams, use the 48-team official list and groups above as authoritative.

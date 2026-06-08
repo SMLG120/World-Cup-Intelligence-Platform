@@ -18,6 +18,15 @@ export function useTeam(id: number) {
   return useQuery({ queryKey: ["team", id], queryFn: () => api.team(id), enabled: !!id });
 }
 
+export function usePlayer(id: number, enabled = true) {
+  return useQuery({
+    queryKey: ["player", id],
+    queryFn: () => api.player(id),
+    enabled: enabled && Number.isFinite(id) && id > 0,
+    retry: false,
+  });
+}
+
 export function useEloHistory(id: number) {
   return useQuery({
     queryKey: ["elo-history", id], queryFn: () => api.eloHistory(id), enabled: !!id,

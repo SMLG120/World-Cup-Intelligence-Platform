@@ -5,6 +5,7 @@ import logging
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.base import Base, SessionLocal, engine
 from app.models import EloHistory, Team
 from wcip.data.teams_2022 import build_teams
@@ -42,8 +43,24 @@ def seed_teams() -> int:
 def seed_qualified_teams_2026() -> int:
     """Seed the 2026 qualified teams table from the static module."""
     try:
+        from sqlalchemy import delete
+        from app.models.match_result import QualifiedTeam
         from wcip.data.wc2026 import CONFIRMED_QUALIFIERS
         from etl.load.db_loader import load_qualified_teams
+
+        official_names = {team["team_name"] for team in CONFIRMED_QUALIFIERS}
+        db = SessionLocal()
+        try:
+            db.execute(
+                delete(QualifiedTeam).where(
+                    QualifiedTeam.tournament_year == 2026,
+                    QualifiedTeam.team_name.not_in(official_names),
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
         inserted = load_qualified_teams(CONFIRMED_QUALIFIERS, tournament_year=2026)
         if inserted:
             logger.info("Seeded %d WC2026 qualified teams", inserted)
@@ -63,7 +80,7 @@ def seed_2026_teams_into_team_table() -> int:
     db = SessionLocal()
     inserted = 0
     try:
-        elo_ratings = fetch_elo_ratings()
+        elo_ratings = fetch_elo_ratings(allow_network=False)
         fifa_ranks = fetch_fifa_rankings()
         existing = set(db.scalars(select(Team.name)).all())
 
@@ -96,11 +113,28 @@ def seed_2026_teams_into_team_table() -> int:
     return inserted
 
 
+def seed_world_cup_2026_registry() -> dict[str, int]:
+    """Seed WC2026 teams/players/coaches through the dedicated ETL module."""
+    try:
+        from etl.world_cup_2026.ingest import run_wc2026_seed
+
+        result = run_wc2026_seed()
+        if any(result.values()):
+            logger.info("WC2026 registry seed result: %s", result)
+        return result
+    except Exception as e:
+        logger.warning("Could not run WC2026 registry seed ETL: %s", e)
+        return {}
+
+
 def init_db() -> None:
     create_tables()
     seed_teams()
     seed_qualified_teams_2026()
     seed_2026_teams_into_team_table()
+    seed_world_cup_2026_registry()
+    if settings.ETL_AUTO_RUN_ON_STARTUP:
+        logger.info("ETL_AUTO_RUN_ON_STARTUP is enabled; startup-safe WC2026 seed already ran")
 
 
 if __name__ == "__main__":

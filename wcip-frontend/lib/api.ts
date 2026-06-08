@@ -120,6 +120,17 @@ export const api = {
   team: (id: number) => request<Team>(`/teams/${id}`),
   eloHistory: (id: number) => request<EloPoint[]>(`/teams/${id}/elo-history`),
 
+  // --- players ---
+  players: (params?: { team_name?: string; q?: string; limit?: number }) => {
+    const p = new URLSearchParams();
+    if (params?.team_name) p.set("team_name", params.team_name);
+    if (params?.q) p.set("q", params.q);
+    if (params?.limit) p.set("limit", String(params.limit));
+    const qs = p.toString();
+    return request<Player[]>(`/players${qs ? `?${qs}` : ""}`);
+  },
+  player: (id: number) => request<Player>(`/players/${id}`),
+
   // --- predictions ---
   simulateMatch: (body: unknown) =>
     request<MatchPrediction>("/match/simulate", { method: "POST", body }),

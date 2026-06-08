@@ -30,13 +30,15 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `match_results` — 49,304 historical international matches (1872–2026)
 - ✅ `match_features` — pre-computed 17-feature vectors
 - ✅ `ml_models` — model registry with metrics + ensemble weights
-- ✅ `qualified_teams` — WC2026 qualification tracker (43/48 confirmed)
+- ✅ `qualified_teams` — WC2026 qualification tracker (48/48, official groups loaded)
 
 ### Data Quality
 - ✅ Unique constraint on (home_team, away_team, match_date) — duplicates rejected at DB level
 - ✅ NA/empty score filtering — scheduled/future matches skipped
 - ✅ Team name normalization — 60+ variants mapped to canonical names
 - ✅ Incremental ETL with 7-day overlap window to catch late corrections
+- ✅ WC2026 validation script for official teams, groups, roster placeholders,
+  coaches, prediction readiness, and tournament placement
 - 📋 Data versioning / snapshot tagging
 - 📋 StatsBomb Open Data integration (xG, shot-level data)
 
@@ -109,17 +111,18 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 ## World Cup 2026
 
 - ✅ `wcip/data/wc2026.py` — 48-team format constants, confederation slots, host nations
-- ✅ `CONFIRMED_QUALIFIERS` — 43 confirmed teams as seed data (no hardcoded 48)
-- ✅ `get_qualified_teams_from_db()` — DB-first, seed fallback
+- ✅ `CONFIRMED_QUALIFIERS` — 48 official teams with FIFA group labels
+- ✅ `get_qualified_teams_from_db()` — DB-first with stale-data fallback to official seed
 - ✅ `build_2026_groups_from_db()` — official groups when draw is complete
 - ✅ `_provisional_groups_by_elo()` — serpentine Elo-seeded provisional groups
 - ✅ `build_2026_bracket()` — R32 → R16 → QF → SF → Final bracket
+- ✅ Dedicated WC2026 seed ETL with placeholder-safe player/coach records
 - ✅ Historical WC support (2010, 2014, 2018, 2022)
 - 📋 Automatic group draw import from official FIFA feed
 
 ---
 
-## API Layer (35 endpoints)
+## API Layer
 
 ### Authentication
 - ✅ `POST /auth/register` — account creation
@@ -132,6 +135,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /teams/{id}` — team detail
 - ✅ `GET /teams/{id}/stats` — aggregated statistics
 - ✅ `GET /teams/{id}/elo-history` — Elo timeseries
+- ✅ `GET /players` — registry with team/search filters
+- ✅ `GET /players/{id}` — player detail
 
 ### Statistical Predictions
 - ✅ `POST /match/simulate` — Elo + Poisson + explanation
@@ -195,7 +200,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 
 ### Pages
 - ✅ `/dashboard` — overview, top contenders, recent simulations
-- ✅ `/wc2026` — qualified teams, groups (draw pending), Monte Carlo simulation
+- ✅ `/wc2026` — qualified teams, official groups, Monte Carlo simulation
 - ✅ `/compare` — statistical vs all 5 ML models vs ensemble, side-by-side
 - ✅ `/player-lab` — load squads, toggle injuries/suspensions, override form/coach
 - ✅ `/models` — model metrics, ensemble weights, feature vector explorer
@@ -229,8 +234,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - The root `.venv` and `wcip-backend/.venv` are separate environments. ML packages
   (scikit-learn 1.9, XGBoost 3.2, LightGBM 4.6, CatBoost 1.2, SHAP 0.52) must be
   installed into the backend venv used by uvicorn.
-- Player and coach tables are schema-complete but empty until `FOOTBALL_DATA_API_KEY`
-  is set and player ETL runs. Feature engineering falls back to defaults when no
-  player data is available.
-- WC2026 group draw is pending as of June 2026 — provisional Elo-seeded groups are
-  used for simulation until official groups are loaded.
+- Player and coach tables are schema-complete. Fresh local databases receive one
+  `world_cup_2026_placeholder` player and coach per WC2026 team; verified roster
+  imports replace those placeholders team by team.
+- WC2026 official groups are loaded locally. The knockout bracket remains a
+  placeholder structure until FIFA-published fixture slots are imported.

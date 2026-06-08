@@ -28,13 +28,13 @@ WC2026_TEAMS_PER_GROUP = 4
 WC2026_TOTAL_TEAMS = 48
 WC2026_R32_TEAMS = 32  # teams that advance past group stage
 
-# Confirmed confederation allocations (updated June 2026 — finalized field)
+# Confirmed confederation allocations for the final 48-team field.
 CONFEDERATION_SLOTS: Dict[str, int] = {
-    "UEFA": 16,      # 16 direct + 1 inter-conf playoff = 17 confirmed
-    "CONMEBOL": 6,   # 6 direct + 1 inter-conf playoff = 7 confirmed
-    "CAF": 9,        # 9 direct + 3 expanded = 12 confirmed
-    "AFC": 8,        # 8 direct + 1 inter-conf playoff = 9 confirmed
-    "CONCACAF": 6,   # 3 hosts + 3 qualifying = 6 confirmed
+    "UEFA": 16,
+    "CONMEBOL": 6,
+    "CAF": 10,
+    "AFC": 9,
+    "CONCACAF": 6,
     "OFC": 1,
 }
 
@@ -42,84 +42,97 @@ CONFEDERATION_SLOTS: Dict[str, int] = {
 HOST_NATIONS = {"United States", "Canada", "Mexico"}
 
 # ---------------------------------------------------------------------------
-# FINALIZED 2026 PARTICIPANT LIST (updated June 2026)
-# Italy, Poland, and Denmark failed to qualify.
-# All 12 newly added nations are confirmed qualifiers.
+# FINALIZED 2026 PARTICIPANT LIST AND GROUP DRAW
+# Source: FIFA World Cup 2026 teams/standings pages, checked 2026-06-08.
+# Internal canonical names intentionally map FIFA display variants:
+# Korea Republic -> South Korea, Türkiye -> Turkey, Côte d'Ivoire -> Ivory Coast,
+# Cabo Verde -> Cape Verde, IR Iran -> Iran, Congo DR -> DR Congo.
 # ---------------------------------------------------------------------------
 
 # This list is the ETL seed and DB fallback. The qualified_teams table is
 # the authoritative runtime source — run scripts/migrate_wc2026_teams.py to
 # apply any changes from this file to the live database.
 CONFIRMED_QUALIFIERS: List[Dict] = [
-    # ── CONCACAF (6 slots: 3 hosts + 3 qualifying) ──────────────────────────
-    {"team_name": "United States",  "team_code": "USA", "confederation": "CONCACAF", "host_nation": True,  "confirmed": True},
-    {"team_name": "Canada",         "team_code": "CAN", "confederation": "CONCACAF", "host_nation": True,  "confirmed": True},
-    {"team_name": "Mexico",         "team_code": "MEX", "confederation": "CONCACAF", "host_nation": True,  "confirmed": True},
-    {"team_name": "Panama",         "team_code": "PAN", "confederation": "CONCACAF", "host_nation": False, "confirmed": True},
-    {"team_name": "Haiti",          "team_code": "HAI", "confederation": "CONCACAF", "host_nation": False, "confirmed": True},
-    {"team_name": "Curaçao",        "team_code": "CUW", "confederation": "CONCACAF", "host_nation": False, "confirmed": True},
+    # Group A
+    {"team_name": "Mexico", "team_code": "MEX", "confederation": "CONCACAF", "group_label": "A", "host_nation": True, "confirmed": True},
+    {"team_name": "South Africa", "team_code": "RSA", "confederation": "CAF", "group_label": "A", "confirmed": True},
+    {"team_name": "South Korea", "team_code": "KOR", "confederation": "AFC", "group_label": "A", "confirmed": True},
+    {"team_name": "Czechia", "team_code": "CZE", "confederation": "UEFA", "group_label": "A", "confirmed": True},
 
-    # ── UEFA (16 direct + 1 inter-conf playoff = 17 confirmed) ─────────────
-    # Italy, Poland, and Denmark did not qualify.
-    {"team_name": "Germany",                 "team_code": "GER", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Portugal",                "team_code": "POR", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "France",                  "team_code": "FRA", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Spain",                   "team_code": "ESP", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "England",                 "team_code": "ENG", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Netherlands",             "team_code": "NED", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Belgium",                 "team_code": "BEL", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Croatia",                 "team_code": "CRO", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Austria",                 "team_code": "AUT", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Switzerland",             "team_code": "SUI", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Turkey",                  "team_code": "TUR", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Serbia",                  "team_code": "SRB", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Scotland",                "team_code": "SCO", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Norway",                  "team_code": "NOR", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Sweden",                  "team_code": "SWE", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Czechia",                 "team_code": "CZE", "confederation": "UEFA", "confirmed": True},
-    {"team_name": "Bosnia and Herzegovina",  "team_code": "BIH", "confederation": "UEFA", "confirmed": True},
+    # Group B
+    {"team_name": "Canada", "team_code": "CAN", "confederation": "CONCACAF", "group_label": "B", "host_nation": True, "confirmed": True},
+    {"team_name": "Bosnia and Herzegovina", "team_code": "BIH", "confederation": "UEFA", "group_label": "B", "confirmed": True},
+    {"team_name": "Qatar", "team_code": "QAT", "confederation": "AFC", "group_label": "B", "confirmed": True},
+    {"team_name": "Switzerland", "team_code": "SUI", "confederation": "UEFA", "group_label": "B", "confirmed": True},
 
-    # ── CONMEBOL (6 direct + 1 inter-conf playoff = 7 confirmed) ───────────
-    {"team_name": "Argentina", "team_code": "ARG", "confederation": "CONMEBOL", "confirmed": True},
-    {"team_name": "Brazil",    "team_code": "BRA", "confederation": "CONMEBOL", "confirmed": True},
-    {"team_name": "Colombia",  "team_code": "COL", "confederation": "CONMEBOL", "confirmed": True},
-    {"team_name": "Uruguay",   "team_code": "URU", "confederation": "CONMEBOL", "confirmed": True},
-    {"team_name": "Ecuador",   "team_code": "ECU", "confederation": "CONMEBOL", "confirmed": True},
-    {"team_name": "Venezuela", "team_code": "VEN", "confederation": "CONMEBOL", "confirmed": True},
-    {"team_name": "Paraguay",  "team_code": "PAR", "confederation": "CONMEBOL", "confirmed": True},
+    # Group C
+    {"team_name": "Brazil", "team_code": "BRA", "confederation": "CONMEBOL", "group_label": "C", "confirmed": True},
+    {"team_name": "Morocco", "team_code": "MAR", "confederation": "CAF", "group_label": "C", "confirmed": True},
+    {"team_name": "Haiti", "team_code": "HAI", "confederation": "CONCACAF", "group_label": "C", "confirmed": True},
+    {"team_name": "Scotland", "team_code": "SCO", "confederation": "UEFA", "group_label": "C", "confirmed": True},
 
-    # ── CAF (9 direct + 3 expanded = 12 confirmed) ──────────────────────────
-    {"team_name": "Morocco",      "team_code": "MAR", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Senegal",      "team_code": "SEN", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Egypt",        "team_code": "EGY", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Nigeria",      "team_code": "NGA", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Ivory Coast",  "team_code": "CIV", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Cameroon",     "team_code": "CMR", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Ghana",        "team_code": "GHA", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Tunisia",      "team_code": "TUN", "confederation": "CAF", "confirmed": True},
-    {"team_name": "South Africa", "team_code": "RSA", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Algeria",      "team_code": "ALG", "confederation": "CAF", "confirmed": True},
-    {"team_name": "Cape Verde",   "team_code": "CPV", "confederation": "CAF", "confirmed": True},
-    {"team_name": "DR Congo",     "team_code": "COD", "confederation": "CAF", "confirmed": True},
+    # Group D
+    {"team_name": "United States", "team_code": "USA", "confederation": "CONCACAF", "group_label": "D", "host_nation": True, "confirmed": True},
+    {"team_name": "Paraguay", "team_code": "PAR", "confederation": "CONMEBOL", "group_label": "D", "confirmed": True},
+    {"team_name": "Australia", "team_code": "AUS", "confederation": "AFC", "group_label": "D", "confirmed": True},
+    {"team_name": "Turkey", "team_code": "TUR", "confederation": "UEFA", "group_label": "D", "confirmed": True},
 
-    # ── AFC (8 direct + 1 inter-conf playoff = 9 confirmed) ─────────────────
-    {"team_name": "Japan",        "team_code": "JPN", "confederation": "AFC", "confirmed": True},
-    {"team_name": "South Korea",  "team_code": "KOR", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Iran",         "team_code": "IRN", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Australia",    "team_code": "AUS", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Saudi Arabia", "team_code": "KSA", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Qatar",        "team_code": "QAT", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Uzbekistan",   "team_code": "UZB", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Jordan",       "team_code": "JOR", "confederation": "AFC", "confirmed": True},
-    {"team_name": "Iraq",         "team_code": "IRQ", "confederation": "AFC", "confirmed": True},
+    # Group E
+    {"team_name": "Germany", "team_code": "GER", "confederation": "UEFA", "group_label": "E", "confirmed": True},
+    {"team_name": "Curaçao", "team_code": "CUW", "confederation": "CONCACAF", "group_label": "E", "confirmed": True},
+    {"team_name": "Ivory Coast", "team_code": "CIV", "confederation": "CAF", "group_label": "E", "confirmed": True},
+    {"team_name": "Ecuador", "team_code": "ECU", "confederation": "CONMEBOL", "group_label": "E", "confirmed": True},
 
-    # ── OFC (1 slot) ─────────────────────────────────────────────────────────
-    {"team_name": "New Zealand", "team_code": "NZL", "confederation": "OFC", "confirmed": True},
+    # Group F
+    {"team_name": "Netherlands", "team_code": "NED", "confederation": "UEFA", "group_label": "F", "confirmed": True},
+    {"team_name": "Japan", "team_code": "JPN", "confederation": "AFC", "group_label": "F", "confirmed": True},
+    {"team_name": "Sweden", "team_code": "SWE", "confederation": "UEFA", "group_label": "F", "confirmed": True},
+    {"team_name": "Tunisia", "team_code": "TUN", "confederation": "CAF", "group_label": "F", "confirmed": True},
+
+    # Group G
+    {"team_name": "Belgium", "team_code": "BEL", "confederation": "UEFA", "group_label": "G", "confirmed": True},
+    {"team_name": "Egypt", "team_code": "EGY", "confederation": "CAF", "group_label": "G", "confirmed": True},
+    {"team_name": "Iran", "team_code": "IRN", "confederation": "AFC", "group_label": "G", "confirmed": True},
+    {"team_name": "New Zealand", "team_code": "NZL", "confederation": "OFC", "group_label": "G", "confirmed": True},
+
+    # Group H
+    {"team_name": "Spain", "team_code": "ESP", "confederation": "UEFA", "group_label": "H", "confirmed": True},
+    {"team_name": "Cape Verde", "team_code": "CPV", "confederation": "CAF", "group_label": "H", "confirmed": True},
+    {"team_name": "Saudi Arabia", "team_code": "KSA", "confederation": "AFC", "group_label": "H", "confirmed": True},
+    {"team_name": "Uruguay", "team_code": "URU", "confederation": "CONMEBOL", "group_label": "H", "confirmed": True},
+
+    # Group I
+    {"team_name": "France", "team_code": "FRA", "confederation": "UEFA", "group_label": "I", "confirmed": True},
+    {"team_name": "Senegal", "team_code": "SEN", "confederation": "CAF", "group_label": "I", "confirmed": True},
+    {"team_name": "Iraq", "team_code": "IRQ", "confederation": "AFC", "group_label": "I", "confirmed": True},
+    {"team_name": "Norway", "team_code": "NOR", "confederation": "UEFA", "group_label": "I", "confirmed": True},
+
+    # Group J
+    {"team_name": "Argentina", "team_code": "ARG", "confederation": "CONMEBOL", "group_label": "J", "confirmed": True},
+    {"team_name": "Algeria", "team_code": "ALG", "confederation": "CAF", "group_label": "J", "confirmed": True},
+    {"team_name": "Austria", "team_code": "AUT", "confederation": "UEFA", "group_label": "J", "confirmed": True},
+    {"team_name": "Jordan", "team_code": "JOR", "confederation": "AFC", "group_label": "J", "confirmed": True},
+
+    # Group K
+    {"team_name": "Portugal", "team_code": "POR", "confederation": "UEFA", "group_label": "K", "confirmed": True},
+    {"team_name": "DR Congo", "team_code": "COD", "confederation": "CAF", "group_label": "K", "confirmed": True},
+    {"team_name": "Uzbekistan", "team_code": "UZB", "confederation": "AFC", "group_label": "K", "confirmed": True},
+    {"team_name": "Colombia", "team_code": "COL", "confederation": "CONMEBOL", "group_label": "K", "confirmed": True},
+
+    # Group L
+    {"team_name": "England", "team_code": "ENG", "confederation": "UEFA", "group_label": "L", "confirmed": True},
+    {"team_name": "Croatia", "team_code": "CRO", "confederation": "UEFA", "group_label": "L", "confirmed": True},
+    {"team_name": "Ghana", "team_code": "GHA", "confederation": "CAF", "group_label": "L", "confirmed": True},
+    {"team_name": "Panama", "team_code": "PAN", "confederation": "CONCACAF", "group_label": "L", "confirmed": True},
 ]
 
 # Quick lookup sets for internal use
 _CONFIRMED_NAMES = {t["team_name"] for t in CONFIRMED_QUALIFIERS}
-_REMOVED_TEAMS = {"Italy", "Poland", "Denmark"}  # did not qualify for WC2026
+_REMOVED_TEAMS = {"Italy", "Poland", "Denmark", "Nigeria", "Cameroon", "Serbia", "Venezuela"}
+OFFICIAL_GROUPS_2026: Dict[str, List[str]] = {
+    label: [t["team_name"] for t in CONFIRMED_QUALIFIERS if t.get("group_label") == label]
+    for label in [chr(ord("A") + i) for i in range(WC2026_NUM_GROUPS)]
+}
 
 # ---------------------------------------------------------------------------
 # 2026 BRACKET TEMPLATE
@@ -144,7 +157,7 @@ class WC2026Tournament:
 
 
 def get_qualified_teams_from_db() -> List[Dict]:
-    """Load qualified teams from the database. Falls back to CONFIRMED_QUALIFIERS if empty."""
+    """Load qualified teams from DB, falling back if DB is empty or stale."""
     try:
         from sqlalchemy import select
         from app.db.base import SessionLocal
@@ -155,19 +168,22 @@ def get_qualified_teams_from_db() -> List[Dict]:
             rows = db.scalars(
                 select(QualifiedTeam).where(QualifiedTeam.tournament_year == 2026)
             ).all()
-            if rows:
-                return [
-                    {
-                        "team_name": r.team_name,
-                        "team_code": r.team_code,
-                        "confederation": r.confederation,
-                        "group_label": r.group_label,
-                        "host_nation": r.host_nation,
-                        "confirmed": r.confirmed,
-                        "pot": r.pot,
-                    }
-                    for r in rows
-                ]
+            payload = [
+                {
+                    "team_name": r.team_name,
+                    "team_code": r.team_code,
+                    "confederation": r.confederation,
+                    "group_label": r.group_label,
+                    "host_nation": r.host_nation,
+                    "confirmed": r.confirmed,
+                    "pot": r.pot,
+                }
+                for r in rows
+            ]
+            if _qualified_payload_is_current(payload):
+                return payload
+            if payload:
+                logger.warning("WC2026 qualified teams in DB are stale; using static FIFA fallback")
         finally:
             db.close()
     except Exception as e:
@@ -187,6 +203,22 @@ def build_2026_groups_from_db() -> Dict[str, List[str]]:
     return groups
 
 
+def _qualified_payload_is_current(teams: List[Dict]) -> bool:
+    if len(teams) != WC2026_TOTAL_TEAMS:
+        return False
+    names = {t.get("team_name") for t in teams}
+    if names != _CONFIRMED_NAMES:
+        return False
+    groups: Dict[str, int] = {}
+    for team in teams:
+        label = team.get("group_label")
+        if not label:
+            return False
+        groups[label] = groups.get(label, 0) + 1
+    expected_labels = {chr(ord("A") + i) for i in range(WC2026_NUM_GROUPS)}
+    return set(groups) == expected_labels and all(count == WC2026_TEAMS_PER_GROUP for count in groups.values())
+
+
 def build_2026_bracket(groups: Dict[str, List[str]]) -> List[Tuple]:
     """Generate the 2026 WC bracket from group results.
 
@@ -204,11 +236,13 @@ def build_2026_bracket(groups: Dict[str, List[str]]) -> List[Tuple]:
     bracket = []
     group_labels = sorted(groups.keys())
 
-    # R32 pairings (placeholder — official pairings TBD by FIFA draw)
+    # R32 pairings (placeholder — official pairings TBD by FIFA draw).
+    # The tournament engine resolves B3_1..B3_8 to the eight best third-place
+    # teams after each simulated group stage.
     r32_pairs = _generate_r32_pairings(group_labels)
-    for i, (g_winner, g_runner) in enumerate(r32_pairs, start=49):
+    for i, (slot_a, slot_b) in enumerate(r32_pairs, start=49):
         match_id = f"M{i}"
-        bracket.append((match_id, ("group", f"1{g_winner}"), ("group", f"2{g_runner}")))
+        bracket.append((match_id, ("group", slot_a), ("group", slot_b)))
 
     # R16 — winners of R32 pairs
     r32_ids = [f"M{i}" for i in range(49, 49 + len(r32_pairs))]
@@ -237,15 +271,23 @@ def build_2026_bracket(groups: Dict[str, List[str]]) -> List[Tuple]:
 
 
 def _generate_r32_pairings(group_labels: List[str]) -> List[Tuple[str, str]]:
-    """Generate standard cross-group pairings for R32."""
-    n = len(group_labels)
-    pairs = []
-    half = n // 2
-    for i in range(half):
-        winner_group = group_labels[i]
-        runner_group = group_labels[n - 1 - i]
-        pairs.append((winner_group, runner_group))
-    return pairs
+    """Generate placeholder R32 pairings.
+
+    Official 2026 pairings depend on the final draw and third-place qualifiers.
+    Until then, build a complete 32-team placeholder from 12 winners, 12
+    runners-up, and 8 best third-place slots.
+    """
+    winners = [f"1{g}" for g in group_labels]
+    runners = [f"2{g}" for g in group_labels]
+    best_thirds = [f"B3_{i}" for i in range(1, 9)]
+    slots = winners + runners + best_thirds
+
+    if len(slots) < WC2026_R32_TEAMS:
+        raise ValueError("WC2026 bracket requires 32 knockout slots")
+
+    first_half = slots[: WC2026_R32_TEAMS // 2]
+    second_half = list(reversed(slots[WC2026_R32_TEAMS // 2:WC2026_R32_TEAMS]))
+    return list(zip(first_half, second_half))
 
 
 def get_tournament(year: int) -> Optional[WC2026Tournament]:

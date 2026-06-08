@@ -116,7 +116,23 @@ function EloTrend({ history }: { history: { rating: number; opponent: string | n
 
 // ── Squad brief ───────────────────────────────────────────────────────────────
 
-function SquadBrief({ players }: { players: { id: number; name: string; position: string; goals: number; xg: number; fitness_score: number; injured: boolean; suspended: boolean }[] }) {
+function SquadBrief({
+  players,
+  teamName,
+}: {
+  players: {
+    id: number;
+    name: string;
+    position: string;
+    goals: number;
+    xg: number;
+    fitness_score: number;
+    injured: boolean;
+    suspended: boolean;
+    data_source?: string | null;
+  }[];
+  teamName: string;
+}) {
   if (!players.length) {
     return <p className="text-muted text-sm text-center py-6">No squad data — set FOOTBALL_DATA_API_KEY to populate.</p>;
   }
@@ -136,31 +152,43 @@ function SquadBrief({ players }: { players: { id: number; name: string; position
         </tr>
       </thead>
       <tbody>
-        {sorted.map((p) => (
-          <tr key={p.id} className="border-b border-line/40 hover:bg-elevated/60 transition-colors">
-            <td className="py-1.5 font-medium">{p.name}</td>
-            <td className="py-1.5 text-muted text-xs hidden sm:table-cell">{p.position}</td>
-            <td className="py-1.5 text-right tnum text-muted">{p.goals}</td>
-            <td className="py-1.5 text-right tnum text-muted">{p.xg.toFixed(1)}</td>
-            <td className="py-1.5 text-right">
-              {p.injured ? (
-                <span className="text-xs text-signal">Injured</span>
-              ) : p.suspended ? (
-                <span className="text-xs text-[hsl(45_95%_58%)]">Susp.</span>
-              ) : (
-                <span className="text-xs text-pitch">Fit</span>
-              )}
-            </td>
-            <td className="py-1.5 text-right hidden md:table-cell">
-              <Link
-                href={`/player/${p.id}?team=${encodeURIComponent(players[0]?.name ?? "")}`}
-                className="text-xs text-muted hover:text-pitch transition-colors"
-              >
-                View →
-              </Link>
-            </td>
-          </tr>
-        ))}
+        {sorted.map((p) => {
+          const isPlaceholder = p.data_source === "world_cup_2026_placeholder";
+          return (
+            <tr key={p.id} className="border-b border-line/40 hover:bg-elevated/60 transition-colors">
+              <td className="py-1.5 font-medium">
+                <span>{p.name}</span>
+                {isPlaceholder && <span className="ml-2 text-[10px] uppercase tracking-wide text-muted">placeholder</span>}
+              </td>
+              <td className="py-1.5 text-muted text-xs hidden sm:table-cell">{p.position}</td>
+              <td className="py-1.5 text-right tnum text-muted">{p.goals}</td>
+              <td className="py-1.5 text-right tnum text-muted">{p.xg.toFixed(1)}</td>
+              <td className="py-1.5 text-right">
+                {isPlaceholder ? (
+                  <span className="text-xs text-muted">Pending</span>
+                ) : p.injured ? (
+                  <span className="text-xs text-signal">Injured</span>
+                ) : p.suspended ? (
+                  <span className="text-xs text-[hsl(45_95%_58%)]">Susp.</span>
+                ) : (
+                  <span className="text-xs text-pitch">Fit</span>
+                )}
+              </td>
+              <td className="py-1.5 text-right hidden md:table-cell">
+                {isPlaceholder ? (
+                  <span className="text-xs text-muted">Pending</span>
+                ) : (
+                  <Link
+                    href={`/player/${p.id}?team=${encodeURIComponent(teamName)}`}
+                    className="text-xs text-muted hover:text-pitch transition-colors"
+                  >
+                    View →
+                  </Link>
+                )}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -204,6 +232,10 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
     opponent: p.opponent ?? "seed",
     recorded_at: p.recorded_at,
   }));
+  const coachIsPlaceholder = wc2026Detail?.coach.data_source === "world_cup_2026_placeholder";
+  const coachSub = coachIsPlaceholder
+    ? "Placeholder"
+    : wc2026Detail?.coach.formation ?? undefined;
 
   return (
     <div className="space-y-8">
@@ -252,7 +284,7 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
           <Stat
             label="Coach"
             value={wc2026Detail.coach.name ?? "Unknown"}
-            sub={wc2026Detail.coach.formation ?? undefined}
+            sub={coachSub}
           />
         </div>
       )}
@@ -297,7 +329,7 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
           )}
         </CardHeader>
         <CardBody>
-          <SquadBrief players={squadData?.squad ?? []} />
+          <SquadBrief players={squadData?.squad ?? []} teamName={team.name} />
         </CardBody>
       </Card>
     </div>

@@ -68,6 +68,10 @@ NAME_MAP: Dict[str, str] = {
     "KSA": "Saudi Arabia",
     "Kingdom of Saudi Arabia": "Saudi Arabia",
 
+    # ── Türkiye ──────────────────────────────────────────────────────────────
+    "Türkiye": "Turkey",
+    "Turkiye": "Turkey",
+
     # ── Iran ─────────────────────────────────────────────────────────────────
     "IR Iran": "Iran",
     "Islamic Republic of Iran": "Iran",

@@ -100,6 +100,13 @@ def run_elo_update() -> dict:
     return {"updated_teams": updated, "source_teams": len(ratings)}
 
 
+def run_wc2026_seed(source_path: str | Path | None = None) -> dict:
+    """Load WC2026 teams, players, and coaches from the dedicated seed ETL."""
+    from etl.world_cup_2026.ingest import run_wc2026_seed as _run_wc2026_seed
+
+    return _run_wc2026_seed(source_path=source_path)
+
+
 def run_full_pipeline(force_refresh: bool = False) -> dict:
     """Run all ETL jobs in order."""
     logger.info("Starting full ETL pipeline (force_refresh=%s)", force_refresh)
@@ -116,6 +123,12 @@ def run_full_pipeline(force_refresh: bool = False) -> dict:
     except Exception as e:
         logger.error("Elo update failed: %s", e)
         results["elo_update_error"] = str(e)
+
+    try:
+        results["wc2026_seed"] = run_wc2026_seed()
+    except Exception as e:
+        logger.error("WC2026 seed failed: %s", e)
+        results["wc2026_seed_error"] = str(e)
 
     logger.info("ETL pipeline complete: %s", results)
     return results

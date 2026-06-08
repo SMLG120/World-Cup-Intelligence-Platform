@@ -65,7 +65,7 @@ _ELO_FALLBACK: Dict[str, float] = {
 }
 
 
-def fetch_elo_ratings(force_refresh: bool = False) -> Dict[str, float]:
+def fetch_elo_ratings(force_refresh: bool = False, allow_network: bool = True) -> Dict[str, float]:
     """Return {team_name: elo_rating} from eloratings.net (or fallback)."""
     _CACHE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -74,6 +74,9 @@ def fetch_elo_ratings(force_refresh: bool = False) -> Dict[str, float]:
         if result:
             return result
         # Cache is stale / format changed — fall through to HTTP fetch
+
+    if not allow_network:
+        return dict(_ELO_FALLBACK)
 
     for attempt in range(3):
         try:
