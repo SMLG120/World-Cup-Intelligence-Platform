@@ -55,7 +55,13 @@ def simulate_tournament(req: TournamentRequest):
         from app.api.v1.world_cup import SimulateRequest, simulate_tournament as simulate_world_cup
 
         return simulate_world_cup(
-            SimulateRequest(year=2026, runs=req.runs, overrides=overrides)
+            SimulateRequest(
+                year=2026,
+                runs=req.runs,
+                overrides=overrides,
+                seed=req.seed,
+                deterministic=req.deterministic,
+            )
         )
 
     if req.runs > settings.SYNC_SIM_RUN_THRESHOLD:
@@ -66,7 +72,13 @@ def simulate_tournament(req: TournamentRequest):
             "to run this asynchronously.",
         )
     try:
-        return prediction.run_monte_carlo(req.edition, req.runs, overrides)
+        return prediction.run_monte_carlo(
+            req.edition,
+            req.runs,
+            overrides,
+            seed=req.seed,
+            deterministic=req.deterministic,
+        )
     except prediction.UnknownEdition as exc:
         raise HTTPException(404, str(exc))
 

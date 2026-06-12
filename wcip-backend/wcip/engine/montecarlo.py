@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import logging
 import os
+import secrets
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -56,6 +57,12 @@ def _wilson_interval(successes: int, n: int, z: float = 1.96) -> Tuple[float, fl
     centre = (p + z * z / (2 * n)) / denom
     margin = (z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / denom
     return max(0.0, centre - margin), min(1.0, centre + margin)
+
+
+def generate_seed() -> int:
+    """Return a system-entropy seed suitable for reproducible replay metadata."""
+
+    return secrets.randbits(63)
 
 
 def _run_chunk(args) -> dict:
@@ -140,7 +147,8 @@ class MonteCarloEngine:
         self.elo_overrides = elo_overrides
 
     def run(self, n_runs: int = 10000, workers: Optional[int] = None,
-            seed: int = 12345) -> Dict[str, TeamProbabilities]:
+            seed: int | None = None) -> Dict[str, TeamProbabilities]:
+        seed = generate_seed() if seed is None else int(seed)
         workers = workers or min(os.cpu_count() or 1, 8)
         # Split runs across workers.
         base = n_runs // workers

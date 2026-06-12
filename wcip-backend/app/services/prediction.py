@@ -11,7 +11,7 @@ from app.core.config import settings
 from wcip.data.teams_2022 import BRACKET_2022, GROUPS_2022, Team, build_teams
 from wcip.engine.explain import explain_match
 from wcip.engine.match import MatchSimulator
-from wcip.engine.montecarlo import MonteCarloEngine
+from wcip.engine.montecarlo import MonteCarloEngine, generate_seed
 from wcip.engine.scoreline import ScorelineModel, TeamMatchProfile
 
 _EDITIONS = {
@@ -147,16 +147,27 @@ def _apply_overrides(teams: Dict[str, object], overrides: dict) -> None:
         t.attack *= avail
 
 
+def _resolve_seed(seed: int | None, deterministic: bool = False) -> int | None:
+    if seed is not None:
+        return int(seed)
+    return 12345 if deterministic else generate_seed()
+
+
 def run_monte_carlo(edition: str, runs: int, overrides: dict,
-                    workers: Optional[int] = None) -> dict:
+                    workers: Optional[int] = None,
+                    seed: int | None = None,
+                    deterministic: bool = False) -> dict:
     runs = min(runs, settings.MAX_MONTE_CARLO_RUNS)
     teams, groups, bracket = _edition(edition)
     _apply_overrides(teams, overrides)
+    seed_to_use = _resolve_seed(seed, deterministic)
     engine = MonteCarloEngine(teams, groups, bracket)
-    probs = engine.run(n_runs=runs, workers=workers)
+    probs = engine.run(n_runs=runs, workers=workers, seed=seed_to_use)
     return {
         "edition": edition,
         "runs": runs,
+        "seed": seed_to_use,
+        "deterministic": bool(deterministic or seed is not None),
         "teams": [
             {
                 "team": p.team,
@@ -178,7 +189,13 @@ def compare_scenarios(edition: str, runs: int, scenarios: list[dict]) -> dict:
     """Run several scenarios and return per-scenario champion probabilities."""
     out = []
     for sc in scenarios:
-        result = run_monte_carlo(edition, runs, sc.get("overrides", {}))
+        result = run_monte_carlo(
+            edition,
+            runs,
+            sc.get("overrides", {}),
+            seed=sc.get("seed"),
+            deterministic=bool(sc.get("deterministic", False)),
+        )
         out.append({"label": sc["label"], "result": result})
     return {"edition": edition, "runs": runs, "scenarios": out}
 

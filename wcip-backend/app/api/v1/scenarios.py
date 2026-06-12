@@ -36,6 +36,8 @@ def compare(req: ScenarioCompareRequest):
                             year=2026,
                             runs=req.runs,
                             overrides=scenario["overrides"],
+                            seed=req.seed,
+                            deterministic=req.deterministic,
                         )
                     ),
                 }
@@ -44,6 +46,9 @@ def compare(req: ScenarioCompareRequest):
         }
 
     try:
+        for scenario in scenarios:
+            scenario["seed"] = req.seed
+            scenario["deterministic"] = req.deterministic
         return prediction.compare_scenarios(req.edition, req.runs, scenarios)
     except prediction.UnknownEdition as exc:
         raise HTTPException(404, str(exc))

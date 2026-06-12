@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import type { QualifiedTeam, WC2026Groups, WC2026Simulation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
+import { SaveSimulationButton } from "@/components/save-simulation-button";
 
 const CONFEDERATION_COLORS: Record<string, string> = {
   UEFA: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -55,6 +57,7 @@ export default function WC2026Page() {
   const [simulation, setSimulation] = useState<WC2026Simulation | null>(null);
   const [loading, setLoading] = useState(true);
   const [simRunning, setSimRunning] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
   const [simRuns, setSimRuns] = useState("10000");
   const [tab, setTab] = useState<"teams" | "groups" | "simulation">("teams");
   const [confFilter, setConfFilter] = useState("all");
@@ -73,10 +76,16 @@ export default function WC2026Page() {
 
   async function runSimulation() {
     setSimRunning(true);
+    setSimError(null);
     try {
-      const result = await api.wc2026Simulate(parseInt(simRuns));
+      const result = await api.wc2026Simulate(parseInt(simRuns), undefined, {
+        seed: null,
+        deterministic: false,
+      });
       setSimulation(result);
       setTab("simulation");
+    } catch (err) {
+      setSimError(err instanceof Error ? err.message : "Simulation failed.");
     } finally {
       setSimRunning(false);
     }
@@ -209,12 +218,37 @@ export default function WC2026Page() {
                 {simRunning ? "Simulating…" : "Run Tournament Simulation"}
               </Button>
             </div>
+            {simError && (
+              <div className="mb-4 text-sm text-red-300 border border-red-500/30 bg-red-500/10 rounded-lg px-3 py-2">
+                {simError}
+              </div>
+            )}
 
             {simulation ? (
               <div>
-                <div className="text-sm text-gray-400 mb-4">
-                  {simulation.runs.toLocaleString()} simulations ·{" "}
-                  {simulation.draw_complete ? "Official groups" : "Provisional groups (draw pending)"}
+                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-4">
+                  <span>
+                    {simulation.runs.toLocaleString()} simulations ·{" "}
+                    {simulation.draw_complete ? "Official groups" : "Provisional groups (draw pending)"}
+                  </span>
+                  {simulation.seed !== undefined && simulation.seed !== null && (
+                    <span>Seed <span className="text-white font-mono">{simulation.seed}</span></span>
+                  )}
+                  <div className="flex gap-2 sm:ml-auto">
+                    <SaveSimulationButton
+                      defaultName={`WC 2026 simulation (${simulation.runs.toLocaleString()} runs)`}
+                      simulationType="wc2026"
+                      edition="2026"
+                      runs={simulation.runs}
+                      seed={simulation.seed}
+                      deterministic={simulation.deterministic}
+                      tournamentResult={simulation}
+                      championProbabilities={simulation.teams}
+                    />
+                    <Link href="/saved">
+                      <Button variant="ghost" size="sm">View Saved Simulations</Button>
+                    </Link>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
                   {simulation.teams.slice(0, 20).map((t, i) => (

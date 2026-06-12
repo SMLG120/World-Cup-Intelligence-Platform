@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -10,6 +11,7 @@ import { useWC2026Simulate } from "@/lib/queries";
 import type { TeamProbability } from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { pct, ordinal } from "@/lib/utils";
@@ -238,16 +240,36 @@ export default function SimulatePage() {
             className="space-y-6"
           >
             {/* Metadata */}
-            <div className="flex flex-wrap gap-4 text-sm text-muted">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-muted">
               <span>
                 <span className="text-fg tnum font-semibold">{result.runs.toLocaleString()}</span> simulations
               </span>
               <span>
                 <span className="text-fg tnum font-semibold">{result.teams.length}</span> teams
               </span>
+              {result.seed !== undefined && result.seed !== null && (
+                <span>
+                  Seed <span className="text-fg tnum font-semibold">{result.seed}</span>
+                </span>
+              )}
               {!result.draw_complete && (
                 <span className="text-[hsl(45_95%_58%)]">Using provisional Elo-seeded groups</span>
               )}
+              <div className="flex gap-2 sm:ml-auto">
+                <SaveSimulationButton
+                  defaultName={`WC 2026 simulation (${result.runs.toLocaleString()} runs)`}
+                  simulationType="wc2026"
+                  edition="2026"
+                  runs={result.runs}
+                  seed={result.seed}
+                  deterministic={result.deterministic}
+                  tournamentResult={result}
+                  championProbabilities={result.teams}
+                />
+                <Link href="/saved">
+                  <Button variant="ghost" size="sm">View Saved Simulations</Button>
+                </Link>
+              </div>
             </div>
 
             {/* View selector */}

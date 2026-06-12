@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -10,6 +11,7 @@ import { useCompareScenarios, useTeams } from "@/lib/queries";
 import { NEUTRAL_MODIFIERS, TeamModifiers } from "@/lib/types";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { pct } from "@/lib/utils";
 
@@ -313,6 +315,34 @@ export default function ScenariosPage() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+              <span>
+                <span className="text-fg tnum font-semibold">{result.runs.toLocaleString()}</span> runs per scenario
+              </span>
+              <div className="flex gap-2 sm:ml-auto">
+                <SaveSimulationButton
+                  defaultName={`Scenario comparison (${result.runs.toLocaleString()} runs)`}
+                  simulationType="scenario"
+                  edition={result.edition}
+                  runs={result.runs}
+                  scenarioOverrides={{
+                    scenarios: scenarios.map((sc) => ({
+                      label: sc.label,
+                      team: sc.team,
+                      modifiers: sc.mods,
+                    })),
+                  }}
+                  result={{
+                    ...result,
+                    teams: result.scenarios[0]?.result.teams ?? [],
+                  }}
+                />
+                <Link href="/saved">
+                  <Button variant="ghost" size="sm">View Saved Simulations</Button>
+                </Link>
+              </div>
+            </div>
+
             <div className="grid gap-5 lg:grid-cols-2">
               {/* Multi-scenario comparison chart */}
               <Card>

@@ -19,6 +19,8 @@ class SimulateRequest(BaseModel):
     year: int = Field(2026, description="Tournament year")
     runs: int = Field(10_000, ge=100, le=50_000)
     overrides: Optional[Dict[str, Dict]] = None
+    seed: Optional[int] = None
+    deterministic: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +138,12 @@ def simulate_tournament(req: SimulateRequest) -> Dict[str, Any]:
         return run_monte_carlo("2022", req.runs, req.overrides or {})
 
     if req.year == 2026:
-        return _simulate_2026(req.runs, req.overrides or {})
+        return _simulate_2026(
+            req.runs,
+            req.overrides or {},
+            seed=req.seed,
+            deterministic=req.deterministic,
+        )
 
     raise HTTPException(400, f"Year {req.year} not supported")
 
@@ -144,15 +151,26 @@ def simulate_tournament(req: SimulateRequest) -> Dict[str, Any]:
 @router.get("/2026/winner-predictions")
 def get_2026_winner_predictions(
     runs: int = Query(5000, ge=100, le=50_000),
-    seed: int = Query(12345),
+    seed: int | None = Query(None),
+    deterministic: bool = Query(False),
 ) -> List[Dict[str, Any]]:
     """Return ranked 2026 World Cup winner predictions."""
     from app.services.winner_predictions import world_cup_2026_winner_predictions
 
-    return world_cup_2026_winner_predictions(runs=runs, seed=seed)
+    return world_cup_2026_winner_predictions(
+        runs=runs,
+        seed=seed,
+        deterministic=deterministic,
+    )
 
 
-def _simulate_2026(runs: int, overrides: Dict) -> Dict[str, Any]:
+def _simulate_2026(
+    runs: int,
+    overrides: Dict,
+    *,
+    seed: int | None = None,
+    deterministic: bool = False,
+) -> Dict[str, Any]:
     """Run 2026 WC simulation.
 
     If groups are available from DB, uses those. Otherwise falls back to
@@ -160,6 +178,7 @@ def _simulate_2026(runs: int, overrides: Dict) -> Dict[str, Any]:
     """
     from wcip.data.wc2026 import build_2026_groups_from_db, get_qualified_teams_from_db, build_2026_bracket
     from wcip.data.teams_2022 import Team
+    from wcip.engine.montecarlo import generate_seed
 
     qualified = get_qualified_teams_from_db()
     if not qualified:
@@ -196,13 +215,17 @@ def _simulate_2026(runs: int, overrides: Dict) -> Dict[str, Any]:
             t.attack = mods.get("attack", 1.0)
             t.defence = mods.get("defence", 1.0)
 
+    seed_to_use = int(seed) if seed is not None else (12345 if deterministic else generate_seed())
+
     from wcip.engine.montecarlo import MonteCarloEngine
     engine = MonteCarloEngine(teams_dict, groups, bracket)
-    probs = engine.run(n_runs=runs)
+    probs = engine.run(n_runs=runs, seed=seed_to_use)
 
     return {
         "year": 2026,
         "runs": runs,
+        "seed": seed_to_use,
+        "deterministic": bool(deterministic or seed is not None),
         "draw_complete": bool(build_2026_groups_from_db()),
         "teams": [
             {

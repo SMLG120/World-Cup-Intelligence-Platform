@@ -21,6 +21,22 @@ def test_winner_predictions_endpoint_returns_normalized_rows(client):
     assert 99.9 <= total <= 100.1
 
 
+def test_winner_predictions_default_seed_uses_entropy(client):
+    first = client.get("/api/v1/world-cup/2026/winner-predictions?runs=100")
+    second = client.get("/api/v1/world-cup/2026/winner-predictions?runs=100")
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_rows = first.json()
+    second_rows = second.json()
+    assert first_rows[0]["seed"] != second_rows[0]["seed"]
+    assert first_rows[0]["deterministic"] is False
+    assert second_rows[0]["deterministic"] is False
+
+    seeded_a = client.get("/api/v1/world-cup/2026/winner-predictions?runs=100&seed=7")
+    seeded_b = client.get("/api/v1/world-cup/2026/winner-predictions?runs=100&seed=7")
+    assert seeded_a.json() == seeded_b.json()
+
+
 def test_player_rating_csv_import_updates_players_and_history(client, tmp_path: Path):
     csv_path = tmp_path / "ratings.csv"
     csv_path.write_text(

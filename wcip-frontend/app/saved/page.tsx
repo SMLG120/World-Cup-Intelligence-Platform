@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   useSimulations, useDeleteSimulation, useDuplicateSimulation, useUpdateSimulation,
+  useCompareSavedSimulations,
 } from "@/lib/queries";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardBody } from "@/components/ui/card";
@@ -15,6 +16,14 @@ import { ChampionChart } from "@/components/champion-chart";
 import type { Simulation } from "@/lib/types";
 import { pct } from "@/lib/utils";
 
+interface CompareResult {
+  champion_deltas?: Array<{
+    simulation_id: number;
+    name: string;
+    deltas: Array<{ team: string; delta: number }>;
+  }>;
+}
+
 const STATUS_COLOR: Record<string, string> = {
   completed: "text-pitch border-pitch/40",
   pending: "text-sky border-sky/40",
@@ -22,7 +31,15 @@ const STATUS_COLOR: Record<string, string> = {
   failed: "text-signal border-signal/40",
 };
 
-function SimRow({ sim }: { sim: Simulation }) {
+function SimRow({
+  sim,
+  selected,
+  onToggleSelected,
+}: {
+  sim: Simulation;
+  selected: boolean;
+  onToggleSelected: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(sim.name);
   const [editing, setEditing] = useState(false);
@@ -60,6 +77,15 @@ function SimRow({ sim }: { sim: Simulation }) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <label className="inline-flex items-center gap-1.5 text-muted">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelected}
+              className="accent-[hsl(var(--pitch))]"
+            />
+            Compare
+          </label>
           {champ && (
             <span className="text-muted">
               Favourite: <span className="text-pitch">{champ.team}</span>{" "}
@@ -84,7 +110,7 @@ function SimRow({ sim }: { sim: Simulation }) {
                 Copy link
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={() => dup.mutate(sim.id)}>Duplicate</Button>
+            <Button size="sm" variant="ghost" onClick={() => dup.mutate(sim.id)}>Save as New</Button>
             <Button size="sm" variant="danger" onClick={() => del.mutate(sim.id)}>Delete</Button>
           </div>
         </div>
@@ -106,16 +132,74 @@ function SimRow({ sim }: { sim: Simulation }) {
 
 function SavedInner() {
   const { data, isLoading } = useSimulations();
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const compare = useCompareSavedSimulations();
+  const comparison = compare.data as CompareResult | undefined;
+
+  function toggleSelected(id: number) {
+    setSelectedIds((ids) => (
+      ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]
+    ));
+  }
+
+  function runCompare() {
+    const [baseId, ...rest] = selectedIds;
+    if (!baseId || rest.length === 0) return;
+    compare.mutate({ id: baseId, simulationIds: rest });
+  }
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="kicker mb-2">Library</p>
           <h1 className="display text-4xl">Saved simulations</h1>
         </div>
-        <Link href="/tournament"><Button>New simulation</Button></Link>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={runCompare}
+            disabled={selectedIds.length < 2 || compare.isPending}
+            variant="outline"
+          >
+            {compare.isPending ? "Comparing…" : "Compare Simulations"}
+          </Button>
+          <Link href="/tournament"><Button>New simulation</Button></Link>
+        </div>
       </header>
+
+      {compare.isError && (
+        <Card><CardBody className="text-sm text-signal">
+          {(compare.error as Error).message}
+        </CardBody></Card>
+      )}
+
+      {comparison?.champion_deltas?.length ? (
+        <Card>
+          <CardBody className="space-y-3">
+            <p className="kicker">Comparison output</p>
+            {comparison.champion_deltas.map((row) => {
+              const deltas = [...row.deltas]
+                .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+                .slice(0, 6);
+              return (
+                <div key={row.simulation_id} className="space-y-1">
+                  <div className="text-sm font-medium">{row.name}</div>
+                  <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {deltas.map((delta) => (
+                      <div key={delta.team} className="flex justify-between text-xs border border-line rounded-md px-2 py-1">
+                        <span className="text-muted">{delta.team}</span>
+                        <span className={delta.delta >= 0 ? "text-pitch tnum" : "text-signal tnum"}>
+                          {delta.delta > 0 ? "+" : ""}{pct(delta.delta)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </CardBody>
+        </Card>
+      ) : null}
 
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)}</div>
@@ -126,7 +210,14 @@ function SavedInner() {
         </CardBody></Card>
       ) : (
         <div className="space-y-3">
-          {data.items.map((sim) => <SimRow key={sim.id} sim={sim} />)}
+          {data.items.map((sim) => (
+            <SimRow
+              key={sim.id}
+              sim={sim}
+              selected={selectedIds.includes(sim.id)}
+              onToggleSelected={() => toggleSelected(sim.id)}
+            />
+          ))}
         </div>
       )}
     </div>

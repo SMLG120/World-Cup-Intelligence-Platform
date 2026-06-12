@@ -44,8 +44,16 @@ def world_cup_standings_alias(year: int = 2026) -> dict[str, Any]:
 
 
 @router.get("/world_cup/2026/winner-predictions")
-def world_cup_winner_predictions_alias(runs: int = 5000, seed: int = 12345) -> list[dict[str, Any]]:
-    return world_cup.get_2026_winner_predictions(runs=runs, seed=seed)
+def world_cup_winner_predictions_alias(
+    runs: int = 5000,
+    seed: int | None = None,
+    deterministic: bool = False,
+) -> list[dict[str, Any]]:
+    return world_cup.get_2026_winner_predictions(
+        runs=runs,
+        seed=seed,
+        deterministic=deterministic,
+    )
 
 
 @router.post("/matches/predict")

@@ -83,6 +83,13 @@ export function useDuplicateSimulation() {
   });
 }
 
+export function useCompareSavedSimulations() {
+  return useMutation({
+    mutationFn: ({ id, simulationIds }: { id: number; simulationIds: number[] }) =>
+      api.compareSimulations(id, simulationIds),
+  });
+}
+
 export function useDeleteSimulation() {
   const qc = useQueryClient();
   return useMutation({
@@ -160,17 +167,25 @@ export function useWC2026Simulate() {
     mutationFn: ({
       runs,
       overrides,
+      seed,
+      deterministic,
     }: {
       runs: number;
       overrides?: Record<string, Record<string, number>>;
-    }) => api.wc2026Simulate(runs, overrides),
+      seed?: number | null;
+      deterministic?: boolean;
+    }) => api.wc2026Simulate(runs, overrides, { seed, deterministic }),
   });
 }
 
-export function useWorldCupWinnerPredictions(runs = 5000, seed = 12345) {
+export function useWorldCupWinnerPredictions(
+  runs = 5000,
+  seed?: number | null,
+  deterministic = false,
+) {
   return useQuery({
-    queryKey: ["wc2026-winner-predictions", runs, seed],
-    queryFn: () => api.wc2026WinnerPredictions(runs, seed),
+    queryKey: ["wc2026-winner-predictions", runs, seed ?? "entropy", deterministic],
+    queryFn: () => api.wc2026WinnerPredictions(runs, seed, deterministic),
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });

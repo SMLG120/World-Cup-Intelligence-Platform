@@ -10,7 +10,8 @@ from fastapi import HTTPException
 def world_cup_2026_winner_predictions(
     *,
     runs: int = 5000,
-    seed: int = 12345,
+    seed: int | None = None,
+    deterministic: bool = False,
     workers: int = 1,
 ) -> list[dict[str, Any]]:
     """Return ranked, normalized 2026 World Cup winner predictions."""
@@ -39,7 +40,7 @@ def world_cup_2026_winner_predictions(
         build_2026_groups_from_db,
         get_qualified_teams_from_db,
     )
-    from wcip.engine.montecarlo import MonteCarloEngine
+    from wcip.engine.montecarlo import MonteCarloEngine, generate_seed
 
     qualified = get_qualified_teams_from_db()
     if not qualified:
@@ -90,14 +91,20 @@ def world_cup_2026_winner_predictions(
             "coach": coach,
         }
 
+    seed_to_use = int(seed) if seed is not None else (12345 if deterministic else generate_seed())
     engine = MonteCarloEngine(teams_dict, groups, bracket)
-    statistical = engine.run(n_runs=runs, workers=workers, seed=seed)
+    statistical = engine.run(n_runs=runs, workers=workers, seed=seed_to_use)
     stat_probs = _normalize({
         team: probs.champion for team, probs in statistical.items()
     })
     ml_probs = _ml_strength_probabilities(strength_inputs)
+    uniform = 1.0 / max(len(teams_dict), 1)
     ensemble_probs = _normalize({
-        team: 0.55 * stat_probs.get(team, 0.0) + 0.45 * ml_probs.get(team, 0.0)
+        team: (
+            0.42 * stat_probs.get(team, 0.0)
+            + 0.48 * ml_probs.get(team, 0.0)
+            + 0.10 * uniform
+        )
         for team in teams_dict
     })
 
@@ -111,6 +118,8 @@ def world_cup_2026_winner_predictions(
                 "rank": 0,
                 "team_id": _team_id(team),
                 "team_name": team,
+                "seed": seed_to_use,
+                "deterministic": bool(deterministic or seed is not None),
                 "fifa_code": meta.get("team_code") or teams_dict[team].code,
                 "group": group_by_team.get(team),
                 "confederation": meta.get("confederation") or teams_dict[team].confederation,
@@ -151,18 +160,19 @@ def _ml_strength_probabilities(inputs: dict[str, dict[str, float]]) -> dict[str,
         player_form = max(0.0, min(1.0, values["player_form_score"]))
         coach = max(0.0, min(1.0, values["coach"] / 1.5))
         experience = max(0.0, min(1.0, values["international_experience_score"]))
-        scores[team] = (
-            0.24 * elo_score
-            + 0.16 * fifa_score
-            + 0.24 * player_score
+        raw_score = (
+            0.20 * elo_score
+            + 0.24 * fifa_score
+            + 0.18 * player_score
             + 0.10 * depth
             + 0.08 * availability
-            + 0.07 * form
+            + 0.10 * form
             + 0.05 * player_form
             + 0.03 * coach
-            + 0.03 * experience
+            + 0.02 * experience
         )
-    return _softmax(scores, temperature=5.0)
+        scores[team] = raw_score if math.isfinite(raw_score) else 0.0
+    return _softmax(scores, temperature=3.5)
 
 
 def _softmax(scores: dict[str, float], *, temperature: float) -> dict[str, float]:
@@ -177,11 +187,15 @@ def _softmax(scores: dict[str, float], *, temperature: float) -> dict[str, float
 
 
 def _normalize(values: dict[str, float]) -> dict[str, float]:
-    total = sum(max(0.0, value) for value in values.values())
+    clean = {
+        key: max(0.0, float(value)) if math.isfinite(float(value)) else 0.0
+        for key, value in values.items()
+    }
+    total = sum(clean.values())
     if total <= 0:
         count = max(len(values), 1)
         return {key: 1.0 / count for key in values}
-    return {key: max(0.0, value) / total for key, value in values.items()}
+    return {key: value / total for key, value in clean.items()}
 
 
 def _normalize_percentage_field(rows: list[dict[str, Any]], field: str) -> None:

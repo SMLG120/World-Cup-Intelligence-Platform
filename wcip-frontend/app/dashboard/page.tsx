@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useTeams } from "@/lib/queries";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
@@ -24,14 +25,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <p className="kicker mb-2">Dashboard</p>
-        <h1 className="display text-4xl">
-          {user?.full_name ? `Hello, ${user.full_name.split(" ")[0]}` : "Overview"}
-        </h1>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="kicker mb-2">Dashboard</p>
+          <h1 className="display text-4xl">
+            {user?.full_name ? `Hello, ${user.full_name.split(" ")[0]}` : "Overview"}
+          </h1>
+        </div>
+        <Link href="/saved">
+          <Button variant="outline" size="sm">View Saved Simulations</Button>
+        </Link>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link href="/simulate">
           <Card className="hover:border-pitch transition-colors h-full">
             <CardBody>
@@ -53,6 +59,14 @@ export default function DashboardPage() {
             <CardBody>
               <div className="display text-xl text-pitch">Browse teams</div>
               <p className="text-sm text-muted mt-1">Ratings and rankings for the 2026 field.</p>
+            </CardBody>
+          </Card>
+        </Link>
+        <Link href="/saved">
+          <Card className="hover:border-pitch transition-colors h-full">
+            <CardBody>
+              <div className="display text-xl text-pitch">Saved simulations</div>
+              <p className="text-sm text-muted mt-1">Open, duplicate, compare, or delete past runs.</p>
             </CardBody>
           </Card>
         </Link>

@@ -31,6 +31,9 @@ class SimKind(str, enum.Enum):
     match = "match"
     tournament = "tournament"
     monte_carlo = "monte_carlo"
+    wc2026 = "wc2026"
+    prediction = "prediction"
+    scenario = "scenario"
 
 
 class Simulation(Base):

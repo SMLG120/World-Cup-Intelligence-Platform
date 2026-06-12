@@ -76,6 +76,8 @@ class HybridPrediction:
 
     # Explainability
     explanation: Optional[PredictionExplanation] = None
+    model_weights_used: Dict[str, float] = field(default_factory=dict)
+    feature_values_used: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -90,6 +92,14 @@ class HybridPrediction:
             "expected_scoreline": self.expected_scoreline,
             "confidence_score": round(self.confidence_score, 3),
             "model_agreement": round(self.model_agreement, 3),
+            "model_weights_used": {
+                key: round(float(value), 4)
+                for key, value in self.model_weights_used.items()
+            },
+            "feature_values_used": {
+                key: round(float(value), 4)
+                for key, value in self.feature_values_used.items()
+            },
             "explanation": _explanation_to_dict(self.explanation),
         }
 
@@ -425,15 +435,15 @@ def predict_hybrid(
     ml_raw = predict_all_models(fv)
     ml_outcomes: Dict[str, MatchOutcome] = {}
     for model_name, probs in ml_raw.items():
-        ml_outcomes[model_name] = MatchOutcome(
+        ml_outcomes[model_name] = _sanitize_outcome(MatchOutcome(
             home_win=probs["home_win"],
             draw=probs["draw"],
             away_win=probs["away_win"],
-        )
+        ))
 
     # 4. Ensemble
     weights = _get_model_weights()
-    ensemble = _compute_ensemble(stat_outcome, ml_outcomes, weights)
+    ensemble, weights_used = _compute_ensemble(stat_outcome, ml_outcomes, weights)
 
     # 5. Confidence score
     confidence, agreement = _compute_confidence(stat_outcome, ml_outcomes)
@@ -465,6 +475,11 @@ def predict_hybrid(
         confidence_score=confidence,
         model_agreement=agreement,
         explanation=explanation,
+        model_weights_used=weights_used,
+        feature_values_used={
+            name: float(fv.features[idx])
+            for idx, name in enumerate(FEATURE_NAMES)
+        },
     )
 
 
@@ -472,7 +487,7 @@ def _compute_ensemble(
     statistical: MatchOutcome,
     ml_outcomes: Dict[str, MatchOutcome],
     weights: Dict[str, float],
-) -> MatchOutcome:
+) -> tuple[MatchOutcome, Dict[str, float]]:
     """Weighted average of statistical + ML predictions.
 
     Statistical model gets a fixed 30% weight; the remaining 70% is split
@@ -480,27 +495,65 @@ def _compute_ensemble(
     """
     STAT_WEIGHT = 0.30
 
-    hw, dw, aw = statistical.home_win, statistical.draw, statistical.away_win
-    total_hw = hw * STAT_WEIGHT
-    total_dw = dw * STAT_WEIGHT
-    total_aw = aw * STAT_WEIGHT
+    statistical = _sanitize_outcome(statistical)
+    if not ml_outcomes:
+        return statistical, {"statistical": 1.0}
+
+    total_hw = statistical.home_win * STAT_WEIGHT
+    total_dw = statistical.draw * STAT_WEIGHT
+    total_aw = statistical.away_win * STAT_WEIGHT
     total_w = STAT_WEIGHT
+    weights_used: Dict[str, float] = {"statistical": STAT_WEIGHT}
+
+    raw_model_weights = {
+        model_name: max(0.0, float(weights.get(model_name, 0.0)))
+        for model_name in ml_outcomes
+        if np.isfinite(float(weights.get(model_name, 0.0)))
+    }
+    raw_total = sum(raw_model_weights.values())
+    if raw_total <= 0 and ml_outcomes:
+        raw_model_weights = {
+            model_name: 1.0 / len(ml_outcomes)
+            for model_name in ml_outcomes
+        }
+        raw_total = 1.0
 
     for model_name, outcome in ml_outcomes.items():
-        w = weights.get(model_name, 1.0 / max(len(ml_outcomes), 1)) * (1 - STAT_WEIGHT)
+        outcome = _sanitize_outcome(outcome)
+        w = (raw_model_weights.get(model_name, 0.0) / raw_total) * (1 - STAT_WEIGHT)
         total_hw += outcome.home_win * w
         total_dw += outcome.draw * w
         total_aw += outcome.away_win * w
         total_w += w
+        weights_used[model_name] = w
 
     if total_w < 1e-8:
-        return statistical
+        return statistical, {"statistical": 1.0}
 
     norm = total_hw + total_dw + total_aw
-    return MatchOutcome(
+    return _sanitize_outcome(MatchOutcome(
         home_win=total_hw / norm,
         draw=total_dw / norm,
         away_win=total_aw / norm,
+    )), weights_used
+
+
+def _sanitize_outcome(outcome: MatchOutcome) -> MatchOutcome:
+    values = np.array(
+        [outcome.home_win, outcome.draw, outcome.away_win],
+        dtype=float,
+    )
+    values = np.where(np.isfinite(values), values, 0.0)
+    values = np.clip(values, 0.0, 1.0)
+    total = float(values.sum())
+    if total <= 1e-8:
+        values = np.array([1 / 3, 1 / 3, 1 / 3], dtype=float)
+    else:
+        values = values / total
+    return MatchOutcome(
+        home_win=float(values[0]),
+        draw=float(values[1]),
+        away_win=float(values[2]),
     )
 
 

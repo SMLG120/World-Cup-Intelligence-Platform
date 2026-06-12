@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { useSimulations } from "@/lib/queries";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardBody } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Simulation } from "@/lib/types";
 import { pct } from "@/lib/utils";
@@ -19,12 +20,17 @@ function HistoryInner() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <p className="kicker mb-2">Activity</p>
-        <h1 className="display text-4xl">History</h1>
-        <p className="text-muted mt-2 text-sm max-w-2xl">
-          A timeline of your simulation runs, most recent first.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="kicker mb-2">Activity</p>
+          <h1 className="display text-4xl">History</h1>
+          <p className="text-muted mt-2 text-sm max-w-2xl">
+            A timeline of your simulation runs, most recent first.
+          </p>
+        </div>
+        <Link href="/saved">
+          <Button variant="outline" size="sm">View Saved Simulations</Button>
+        </Link>
       </header>
 
       {isLoading ? (

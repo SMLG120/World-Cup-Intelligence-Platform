@@ -82,6 +82,8 @@ export interface TeamProbability {
 export interface TournamentResult {
   edition: string;
   runs: number;
+  seed?: number | null;
+  deterministic?: boolean;
   teams: TeamProbability[];
 }
 
@@ -156,6 +158,8 @@ export interface HybridPrediction {
   expected_scoreline: string;
   confidence_score: number;
   model_agreement: number;
+  model_weights_used?: Record<string, number>;
+  feature_values_used?: Record<string, number>;
   explanation: PredictionExplanation;
 }
 
@@ -205,6 +209,8 @@ export interface WC2026Groups {
 export interface WC2026Simulation {
   year: number;
   runs: number;
+  seed?: number | null;
+  deterministic?: boolean;
   draw_complete: boolean;
   teams: TeamProbability[];
 }
@@ -213,6 +219,8 @@ export interface WorldCupWinnerPrediction {
   rank: number;
   team_id: number | null;
   team_name: string;
+  seed?: number | null;
+  deterministic?: boolean;
   fifa_code: string;
   group: string | null;
   confederation: string;

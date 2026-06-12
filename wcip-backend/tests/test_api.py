@@ -66,8 +66,28 @@ def test_world_cup_2026_simulation_runs(client):
     body = r.json()
     assert body["year"] == 2026
     assert body["runs"] == 100
+    assert body["seed"] is not None
+    assert body["deterministic"] is False
     assert body["teams"]
     assert sum(t["champion"] for t in body["teams"]) > 0
+
+
+def test_tournament_seed_semantics(client):
+    first = client.post("/api/v1/world-cup/simulate",
+                        json={"year": 2026, "runs": 100}).json()
+    second = client.post("/api/v1/world-cup/simulate",
+                         json={"year": 2026, "runs": 100}).json()
+    assert first["seed"] != second["seed"]
+    assert first["deterministic"] is False
+    assert second["deterministic"] is False
+
+    seeded_a = client.post("/api/v1/world-cup/simulate",
+                           json={"year": 2026, "runs": 100, "seed": 99}).json()
+    seeded_b = client.post("/api/v1/world-cup/simulate",
+                           json={"year": 2026, "runs": 100, "seed": 99}).json()
+    assert seeded_a["seed"] == seeded_b["seed"] == 99
+    assert seeded_a["deterministic"] is True
+    assert seeded_a["teams"] == seeded_b["teams"]
 
 
 def test_world_cup_2026_groups_are_official_shape(client):
@@ -135,6 +155,75 @@ def test_saved_simulation_lifecycle(client, auth_headers):
                          headers=auth_headers).status_code == 204
     assert client.get(f"/api/v1/simulations/{sim_id}",
                       headers=auth_headers).status_code == 404
+
+
+def test_saved_simulation_full_result_and_compare_are_user_scoped(client, auth_headers):
+    payload_a = {
+        "name": "WC 2026 saved run A",
+        "simulation_type": "wc2026",
+        "edition": "2026",
+        "runs": 100,
+        "seed": 123,
+        "deterministic": True,
+        "tournament_result": {
+            "year": 2026,
+            "runs": 100,
+            "seed": 123,
+            "deterministic": True,
+            "teams": [
+                {"team": "France", "champion": 0.2, "final": 0.3, "semi": 0.4,
+                 "quarter": 0.5, "round_of_16": 0.8, "expected_finish": 5,
+                 "champion_ci_low": 0.1, "champion_ci_high": 0.3},
+                {"team": "Brazil", "champion": 0.1, "final": 0.2, "semi": 0.3,
+                 "quarter": 0.4, "round_of_16": 0.7, "expected_finish": 6,
+                 "champion_ci_low": 0.05, "champion_ci_high": 0.2},
+            ],
+        },
+    }
+    payload_b = {
+        **payload_a,
+        "name": "WC 2026 saved run B",
+        "seed": 456,
+        "tournament_result": {
+            **payload_a["tournament_result"],
+            "seed": 456,
+            "teams": [
+                {**payload_a["tournament_result"]["teams"][0], "champion": 0.15},
+                {**payload_a["tournament_result"]["teams"][1], "champion": 0.2},
+            ],
+        },
+    }
+
+    created_a = client.post("/api/v1/simulations", headers=auth_headers, json=payload_a)
+    created_b = client.post("/api/v1/simulations", headers=auth_headers, json=payload_b)
+    assert created_a.status_code == 201
+    assert created_b.status_code == 201
+    sim_a = created_a.json()["id"]
+    sim_b = created_b.json()["id"]
+    assert created_a.json()["status"] == "completed"
+    assert created_a.json()["result"]["teams"][0]["team"] == "France"
+
+    comparison = client.post(
+        f"/api/v1/simulations/{sim_a}/compare",
+        headers=auth_headers,
+        json={"simulation_ids": [sim_b]},
+    )
+    assert comparison.status_code == 200
+    delta_rows = comparison.json()["champion_deltas"][0]["deltas"]
+    brazil_delta = next(row["delta"] for row in delta_rows if row["team"] == "Brazil")
+    assert round(brazil_delta, 6) == 0.1
+
+    client.post("/api/v1/auth/register",
+                json={"email": "other@example.com", "password": "password123"})
+    other_token = client.post("/api/v1/auth/login",
+                              data={"username": "other@example.com", "password": "password123"}).json()
+    other_headers = {"Authorization": f"Bearer {other_token['access_token']}"}
+    assert client.get(f"/api/v1/simulations/{sim_a}", headers=other_headers).status_code == 404
+    assert client.post(
+        f"/api/v1/simulations/{sim_a}/compare",
+        headers=other_headers,
+        json={"simulation_ids": [sim_b]},
+    ).status_code == 404
 
 
 def test_simulations_require_auth(client):

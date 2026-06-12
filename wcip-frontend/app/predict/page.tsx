@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,6 +12,7 @@ import { useTeams, useSimulateMatch, useMLPredict } from "@/lib/queries";
 import type { MatchPrediction, HybridPrediction } from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { pct } from "@/lib/utils";
@@ -515,6 +517,31 @@ export default function PredictPage() {
                   </span>
                 </div>
               )}
+              <div className="flex flex-wrap justify-center gap-2 mt-4">
+                <SaveSimulationButton
+                  defaultName={`${home} vs ${away} prediction`}
+                  simulationType="prediction"
+                  inputTeams={[home, away]}
+                  inputParameters={{
+                    active_mode: activeMode,
+                    home_overrides: homeOverrides,
+                    away_overrides: awayOverrides,
+                  }}
+                  statisticalResult={statResult ?? hybridResult?.statistical}
+                  mlResult={hybridResult}
+                  ensembleResult={hybridResult?.ensemble}
+                  result={{
+                    home,
+                    away,
+                    statistical_result: statResult,
+                    ml_result: hybridResult,
+                    ensemble_result: hybridResult?.ensemble,
+                  }}
+                />
+                <Link href="/saved">
+                  <Button variant="ghost" size="sm">View Saved Simulations</Button>
+                </Link>
+              </div>
             </div>
 
             {/* Three-layer comparison */}

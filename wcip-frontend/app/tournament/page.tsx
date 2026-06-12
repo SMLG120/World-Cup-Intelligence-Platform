@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { useSimulateTournament } from "@/lib/queries";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChampionChart, ChampionLegend } from "@/components/champion-chart";
 import { Bracket } from "@/components/bracket";
@@ -75,6 +77,32 @@ export default function TournamentPage() {
 
       {result && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+            <span>
+              <span className="text-fg tnum font-semibold">{result.runs.toLocaleString()}</span> runs
+            </span>
+            {result.seed !== undefined && result.seed !== null && (
+              <span>
+                Seed <span className="text-fg tnum font-semibold">{result.seed}</span>
+              </span>
+            )}
+            <div className="flex gap-2 sm:ml-auto">
+              <SaveSimulationButton
+                defaultName={`${result.edition} tournament simulation`}
+                simulationType="tournament"
+                edition={result.edition}
+                runs={result.runs}
+                seed={result.seed}
+                deterministic={result.deterministic}
+                tournamentResult={result}
+                championProbabilities={result.teams}
+              />
+              <Link href="/saved">
+                <Button variant="ghost" size="sm">View Saved Simulations</Button>
+              </Link>
+            </div>
+          </div>
+
           <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
             <Card>
               <CardHeader className="flex justify-between items-baseline">

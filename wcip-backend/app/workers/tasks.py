@@ -28,6 +28,8 @@ def run_simulation(self, simulation_id: int) -> dict:
             edition=params.get("edition", "2022"),
             runs=int(params.get("runs", 10000)),
             overrides=params.get("overrides", {}),
+            seed=params.get("seed"),
+            deterministic=bool(params.get("deterministic", False)),
         )
         repo.mark_completed(sim, result)
         return {"simulation_id": simulation_id, "status": "completed"}

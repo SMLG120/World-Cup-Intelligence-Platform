@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Generic, List, Optional, TypeVar
+from typing import Any, Generic, List, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -102,6 +102,8 @@ class TournamentRequest(BaseModel):
     runs: int = Field(default=10000, ge=1, le=50000)
     overrides: dict[str, TeamModifiers] = Field(default_factory=dict)
     name: str = "Tournament simulation"
+    seed: Optional[int] = None
+    deterministic: bool = False
 
 
 class TeamProbabilityOut(BaseModel):
@@ -126,6 +128,8 @@ class ScenarioCompareRequest(BaseModel):
     edition: str = "2022"
     runs: int = Field(default=5000, ge=1, le=50000)
     scenarios: List[ScenarioInput] = Field(min_length=2, max_length=3)
+    seed: Optional[int] = None
+    deterministic: bool = False
 
 
 # ---- saved simulations -----------------------------------------------------
@@ -153,3 +157,29 @@ class SimulationCreateResponse(BaseModel):
 class SimulationUpdate(BaseModel):
     name: Optional[str] = None
     is_public: Optional[bool] = None
+
+
+class SimulationSaveRequest(BaseModel):
+    """Flexible payload for saving an already-produced result."""
+
+    name: str = "Saved simulation"
+    simulation_type: str = "tournament"
+    edition: Optional[str] = None
+    runs: Optional[int] = Field(default=None, ge=1, le=50000)
+    seed: Optional[int] = None
+    deterministic: bool = False
+    input_teams: Optional[list[str]] = None
+    input_parameters: dict[str, Any] = Field(default_factory=dict)
+    overrides: dict[str, Any] = Field(default_factory=dict)
+    scenario_overrides: dict[str, Any] = Field(default_factory=dict)
+    statistical_result: Optional[dict[str, Any]] = None
+    ml_result: Optional[dict[str, Any]] = None
+    ensemble_result: Optional[dict[str, Any]] = None
+    tournament_result: Optional[dict[str, Any]] = None
+    champion_probabilities: Optional[list[dict[str, Any]]] = None
+    bracket_output: Optional[dict[str, Any]] = None
+    result: Optional[dict[str, Any]] = None
+
+
+class SimulationCompareRequest(BaseModel):
+    simulation_ids: list[int] = Field(default_factory=list, max_length=5)

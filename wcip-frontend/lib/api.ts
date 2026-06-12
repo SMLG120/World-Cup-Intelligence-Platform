@@ -155,7 +155,7 @@ export const api = {
 
   // --- simulations (authed) ---
   createSimulation: (body: unknown) =>
-    request<{ id: number; status: string; task_id?: string; result?: TournamentResult }>(
+    request<{ id: number; status: string; task_id?: string; result?: unknown }>(
       "/simulations", { method: "POST", body, auth: true }),
   listSimulations: (page = 1, page_size = 20) =>
     request<Page<Simulation>>(`/simulations?page=${page}&page_size=${page_size}`, { auth: true }),
@@ -164,6 +164,12 @@ export const api = {
     request<Simulation>(`/simulations/${id}`, { method: "PATCH", body, auth: true }),
   duplicateSimulation: (id: number) =>
     request<Simulation>(`/simulations/${id}/duplicate`, { method: "POST", auth: true }),
+  compareSimulations: (id: number, simulationIds: number[]) =>
+    request<unknown>(`/simulations/${id}/compare`, {
+      method: "POST",
+      body: { simulation_ids: simulationIds },
+      auth: true,
+    }),
   deleteSimulation: (id: number) =>
     request<void>(`/simulations/${id}`, { method: "DELETE", auth: true }),
 
@@ -211,16 +217,29 @@ export const api = {
 
   wc2026Groups: () => request<WC2026Groups>("/world-cup/groups?year=2026"),
 
-  wc2026Simulate: (runs = 10000, overrides?: Record<string, Record<string, number>>) =>
+  wc2026Simulate: (
+    runs = 10000,
+    overrides?: Record<string, Record<string, number>>,
+    options?: { seed?: number | null; deterministic?: boolean },
+  ) =>
     request<WC2026Simulation>("/world-cup/simulate", {
       method: "POST",
-      body: { year: 2026, runs, overrides },
+      body: {
+        year: 2026,
+        runs,
+        overrides,
+        seed: options?.seed ?? null,
+        deterministic: options?.deterministic ?? false,
+      },
     }),
 
-  wc2026WinnerPredictions: (runs = 5000, seed = 12345) =>
-    request<WorldCupWinnerPrediction[]>(
-      `/world-cup/2026/winner-predictions?runs=${runs}&seed=${seed}`
-    ),
+  wc2026WinnerPredictions: (runs = 5000, seed?: number | null, deterministic = false) => {
+    const params = new URLSearchParams({ runs: String(runs), deterministic: String(deterministic) });
+    if (seed !== undefined && seed !== null) params.set("seed", String(seed));
+    return request<WorldCupWinnerPrediction[]>(
+      `/world-cup/2026/winner-predictions?${params}`
+    );
+  },
 
   wc2026Schedule: () => request<unknown>("/world-cup/schedule?year=2026"),
 
