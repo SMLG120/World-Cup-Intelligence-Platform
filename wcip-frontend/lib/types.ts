@@ -72,6 +72,7 @@ export interface TeamProbability {
   final: number;
   semi: number;
   quarter: number;
+  round_of_32?: number;
   round_of_16: number;
   expected_finish: number;
   champion_ci_low: number;
@@ -206,6 +207,29 @@ export interface WC2026Simulation {
   runs: number;
   draw_complete: boolean;
   teams: TeamProbability[];
+}
+
+export interface WorldCupWinnerPrediction {
+  rank: number;
+  team_id: number | null;
+  team_name: string;
+  fifa_code: string;
+  group: string | null;
+  confederation: string;
+  fifa_rank: number;
+  champion_probability: number;
+  final_probability: number;
+  semifinal_probability: number;
+  quarterfinal_probability: number;
+  round_of_16_probability: number;
+  group_qualification_probability: number;
+  expected_finish: number;
+  confidence_interval_low: number;
+  confidence_interval_high: number;
+  statistical_probability: number;
+  ml_probability: number;
+  ensemble_probability: number;
+  explanation: string;
 }
 
 export interface TeamDetail {

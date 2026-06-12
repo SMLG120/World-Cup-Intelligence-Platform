@@ -64,9 +64,25 @@ class MatchFeatures(Base):
     tournament_exp_diff: Mapped[float] = mapped_column(Float, default=0.0)
     starting_xi_strength_diff: Mapped[float] = mapped_column(Float, default=0.0)
     bench_strength_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    average_starting_xi_rating_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    average_squad_rating_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    top_5_player_rating_avg_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    goalkeeper_rating_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    defensive_unit_rating_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    midfield_unit_rating_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    attacking_unit_rating_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    squad_depth_score_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    star_player_score_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    injury_burden_score_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    player_form_score_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    player_availability_score_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    international_experience_score_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    average_caps_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    total_international_goals_diff: Mapped[float] = mapped_column(Float, default=0.0)
+    weighted_player_strength_diff: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Feature version for reproducibility
-    feature_version: Mapped[str] = mapped_column(String(20), default="v1")
+    feature_version: Mapped[str] = mapped_column(String(20), default="v2")
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

@@ -9,6 +9,7 @@ import { useTeams } from "@/lib/queries";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
@@ -51,11 +52,13 @@ export default function DashboardPage() {
           <Card className="hover:border-pitch transition-colors h-full">
             <CardBody>
               <div className="display text-xl text-pitch">Browse teams</div>
-              <p className="text-sm text-muted mt-1">Ratings and rankings for all 32 nations.</p>
+              <p className="text-sm text-muted mt-1">Ratings and rankings for the 2026 field.</p>
             </CardBody>
           </Card>
         </Link>
       </div>
+
+      <WinnerPredictionsSection compact />
 
       <Card>
         <CardHeader className="flex justify-between items-baseline">

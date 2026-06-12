@@ -46,6 +46,7 @@ class TournamentResult:
     semi_finalists: List[str]
     quarter_finalists: List[str]
     round_of_16: List[str]
+    round_of_32: List[str] = field(default_factory=list)
 
 
 def _profile(team_obj, elo_lookup: Dict[str, float]) -> TeamMatchProfile:
@@ -148,6 +149,7 @@ class TournamentEngine:
         )
         for i, row in enumerate(best_thirds[:8], start=1):
             positions[f"B3_{i}"] = row.team
+        round_of_32 = sorted(set(positions.values()))
 
         # 2. Knockout.
         knockout: Dict[str, MatchResult] = {}
@@ -182,6 +184,7 @@ class TournamentEngine:
             semi_finalists=sf,
             quarter_finalists=qf,
             round_of_16=r16,
+            round_of_32=round_of_32,
         )
 
     def _previous_match_ids(self, *match_ids: str) -> List[str]:

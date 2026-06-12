@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     # --- ML ---
     ML_MODELS_DIR: str = "models"
     ML_MIN_TRAINING_SAMPLES: int = 200
-    ML_FEATURE_VERSION: str = "v1"
+    ML_FEATURE_VERSION: str = "v2"
     ETL_AUTO_RUN_ON_STARTUP: bool = False  # set True to auto-run ETL on deploy
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")

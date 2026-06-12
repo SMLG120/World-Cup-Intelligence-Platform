@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 
 from app.core.config import settings
 from app.db.base import Base, SessionLocal, engine
@@ -15,6 +15,70 @@ logger = logging.getLogger(__name__)
 
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_runtime_columns()
+
+
+def _ensure_sqlite_runtime_columns() -> None:
+    """Patch dev SQLite DBs created before the latest Alembic migrations.
+
+    Production should still run Alembic. This guard keeps local existing
+    ``wcip.db`` files from failing at runtime when SQLAlchemy selects newly
+    added columns that ``CREATE TABLE IF NOT EXISTS`` cannot add.
+    """
+
+    if engine.dialect.name != "sqlite":
+        return
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+
+    def add_missing_columns(table_name: str, columns: dict[str, str]) -> None:
+        if table_name not in existing_tables:
+            return
+        existing_columns = {column["name"] for column in inspector.get_columns(table_name)}
+        statements = [
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+            for column_name, definition in columns.items()
+            if column_name not in existing_columns
+        ]
+        if not statements:
+            return
+        with engine.begin() as conn:
+            for statement in statements:
+                conn.execute(text(statement))
+        logger.info("Added %d missing SQLite column(s) to %s", len(statements), table_name)
+
+    add_missing_columns(
+        "players",
+        {
+            "player_rating": "FLOAT",
+            "ea_fc_rating": "FLOAT",
+            "player_rating_source": "VARCHAR(120)",
+            "player_rating_version": "VARCHAR(80)",
+            "player_rating_updated_at": "DATETIME",
+        },
+    )
+    add_missing_columns(
+        "match_features",
+        {
+            "average_starting_xi_rating_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "average_squad_rating_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "top_5_player_rating_avg_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "goalkeeper_rating_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "defensive_unit_rating_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "midfield_unit_rating_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "attacking_unit_rating_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "squad_depth_score_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "star_player_score_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "injury_burden_score_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "player_form_score_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "player_availability_score_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "international_experience_score_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "average_caps_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "total_international_goals_diff": "FLOAT NOT NULL DEFAULT 0.0",
+            "weighted_player_strength_diff": "FLOAT NOT NULL DEFAULT 0.0",
+        },
+    )
 
 
 def seed_teams() -> int:

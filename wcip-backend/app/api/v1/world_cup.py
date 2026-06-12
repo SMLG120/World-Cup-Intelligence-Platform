@@ -141,6 +141,17 @@ def simulate_tournament(req: SimulateRequest) -> Dict[str, Any]:
     raise HTTPException(400, f"Year {req.year} not supported")
 
 
+@router.get("/2026/winner-predictions")
+def get_2026_winner_predictions(
+    runs: int = Query(5000, ge=100, le=50_000),
+    seed: int = Query(12345),
+) -> List[Dict[str, Any]]:
+    """Return ranked 2026 World Cup winner predictions."""
+    from app.services.winner_predictions import world_cup_2026_winner_predictions
+
+    return world_cup_2026_winner_predictions(runs=runs, seed=seed)
+
+
 def _simulate_2026(runs: int, overrides: Dict) -> Dict[str, Any]:
     """Run 2026 WC simulation.
 
@@ -200,6 +211,7 @@ def _simulate_2026(runs: int, overrides: Dict) -> Dict[str, Any]:
                 "final": round(p.final, 5),
                 "semi": round(p.semi, 5),
                 "quarter": round(p.quarter, 5),
+                "round_of_32": round(getattr(p, "round_of_32", 0.0), 5),
                 "round_of_16": round(p.round_of_16, 5),
                 "expected_finish": round(p.expected_finish, 3),
                 "champion_ci_low": round(p.champion_ci_low, 5),

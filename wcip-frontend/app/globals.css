@@ -12,6 +12,9 @@
   --pitch: 75 95% 55%;      /* acid lime — primary accent */
   --signal: 8 90% 64%;      /* coral — counter / away accent */
   --sky: 200 90% 62%;       /* draw / neutral accent */
+  --font-display: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 * {

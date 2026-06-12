@@ -15,6 +15,9 @@ metadata:
 - `coaches`: 48 startup placeholder rows until verified coach snapshot import
 - `fifa_ranking_snapshots`: 0 rows locally at audit time; migration and loader are ready
 - `fifa_ranking_entries`: 0 rows locally at audit time; populated by ranking snapshot ingestion
+- `team_rankings`: provider-agnostic ranking records populated with each snapshot
+- `ranking_source_logs`: fetch/load traceability for ranking ingestion
+- `player_rating_imports` / `player_rating_records`: legal-source CSV rating import history
 
 ## FIFA Ranking Audit (June 2026)
 
@@ -25,7 +28,8 @@ metadata:
 - Local DB before ingestion: Brazil #1, Belgium #2, Argentina #3, France #4
 - Local cache before ingestion: Argentina #1, France #2, England #3, Belgium #4, Brazil #5
 - Fix: rankings now ingest into `fifa_ranking_snapshots` and
-  `fifa_ranking_entries`; `teams.fifa_rank` is current-display cache only
+  `fifa_ranking_entries`, mirror into `team_rankings`, and log attempts in
+  `ranking_source_logs`; `teams.fifa_rank` is current-display cache only
 
 ## WC2026 Official Participant List (48 teams)
 
@@ -86,9 +90,13 @@ Delete to force full refresh on next run.
 3. **Official FIFA men's rankings** — `https://inside.fifa.com/fifa-world-ranking/men`
    - Extractor resolves the latest FIFA ranking schedule id and stores immutable snapshots
    - Snapshot tables preserve ranks historically for features, backtests, and retraining
-4. **football-data.org** — Optional API; requires `FOOTBALL_DATA_API_KEY`
-5. **FIFA standings** — Official WC2026 team/group reference
-6. **WC2026 placeholder seed** — one `world_cup_2026_placeholder` player and
+4. **Player ratings CSV** — Optional legal-source import at `wcip-backend/data/external/ea_player_ratings.csv`
+   - Importer: `etl/player_ratings/csv_import.py`
+   - Stores import batches in `player_rating_imports` and row history in `player_rating_records`
+   - Do not scrape proprietary sources that prohibit scraping
+5. **football-data.org** — Optional API; requires `FOOTBALL_DATA_API_KEY`
+6. **FIFA standings** — Official WC2026 team/group reference
+7. **WC2026 placeholder seed** — one `world_cup_2026_placeholder` player and
    coach per team for local startup; real imports replace placeholders by team
 
 ## Known Data Issues
@@ -99,6 +107,7 @@ Delete to force full refresh on next run.
 - New WC2026 teams (Iraq, Curaçao, Haiti, Cape Verde, DR Congo) have sparse historical match data
 - Startup player/coach rows are placeholders, not verified squad or staff data
 - Historical FIFA ranking snapshots still need backfill; missing historical periods use neutral ranking values to avoid leakage
+- Player rating CSV is optional; without it, v2 player-rating features use neutral fallbacks
 
 ## Migration Script
 

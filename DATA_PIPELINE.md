@@ -14,6 +14,7 @@ Data Sources
      ├─ martj42 CSV      (49K+ matches since 1872)
      ├─ eloratings.net   (current team Elo ratings)
      ├─ FIFA rankings    (versioned men’s ranking snapshots)
+     ├─ player ratings   (legal-source CSV, optional)
      └─ football-data.org API  (squad data, optional)
      │
      ▼
@@ -29,9 +30,10 @@ Validate   (schema + business rules)
 Load  ──── match_results (49,306 local rows observed during audit)
       │    teams.elo (updated)
       │    fifa_ranking_snapshots / fifa_ranking_entries (historical)
+      │    team_rankings / ranking_source_logs (traceability)
       │    teams.fifa_rank (current display cache)
       │    qualified_teams (48 WC2026 teams)
-      │    players / coaches (when API key set)
+      │    players / coaches / player_rating_* (when source data is set)
       │
       ▼
 Feature Engineering  ──── match_features (pre-computed)
@@ -39,7 +41,7 @@ Feature Engineering  ──── match_features (pre-computed)
       ▼
 ML Training
       │
-      ├─ 17-feature matrix (25K+ rows from 2000+)
+      ├─ v2 feature matrix (33 features, 25K+ rows from 2000+)
       ├─ Time-series cross-validation (5 folds)
       ├─ 5 models trained + evaluated
       └─ models/*.pkl + ml_models registry
@@ -253,9 +255,11 @@ load_fifa_ranking_snapshot(snapshot) -> dict
 
 1. Upsert one row in `fifa_ranking_snapshots` keyed by FIFA `ranking_id`.
 2. Insert one row per team in `fifa_ranking_entries`.
-3. Keep prior ranking publications instead of overwriting them.
-4. Mark only the newest snapshot as `is_current=true`.
-5. Refresh `teams.fifa_rank` from the newest snapshot as a display/API cache.
+3. Mirror rows into `team_rankings` for provider-agnostic downstream queries.
+4. Keep prior ranking publications instead of overwriting them.
+5. Mark only the newest snapshot as `is_current=true`.
+6. Refresh `teams.fifa_rank` from the newest snapshot as a display/API cache.
+7. Write `ranking_source_logs` rows for fetch/load traceability.
 
 `teams.fifa_rank` is not a historical feature source. Historical training and
 backtests read `fifa_ranking_entries` through the latest snapshot with
@@ -288,7 +292,62 @@ When `trigger_retraining=True`, material ranking updates call
 
 ---
 
-## Source 4: Football-Data.org API
+## Source 4: Player Ratings And Form CSV
+
+### Source Details
+- **Default path:** `wcip-backend/data/external/ea_player_ratings.csv`
+- **Allowed sources:** licensed APIs, public datasets, manually maintained CSV
+  files with attribution, or other data you have permission to use
+- **Disallowed by policy:** scraping proprietary pages whose terms prohibit it,
+  including FotMob, SofaScore, Transfermarkt, Opta, or EA pages unless you have a
+  legal data source
+
+### CSV Schema
+
+Supported columns:
+
+```text
+player_name,team_name,position,club,age,international_caps,
+international_goals,recent_form_score,injured,suspended,minutes_played,
+goals,assists,xg,xa,market_value_eur,player_rating,ea_fc_rating
+```
+
+### Extract/Load Step
+**File:** `etl/player_ratings/csv_import.py`
+
+```python
+import_player_ratings_csv(source_path, source_name, source_version)
+```
+
+1. Read a CSV file using `csv.DictReader`.
+2. Validate required player/team names.
+3. Normalize team names through `canonical()`.
+4. Validate ratings are in the 0–100 range.
+5. Upsert `players` by `team_name + player_name`.
+6. Store import metadata in `player_rating_imports`.
+7. Store historical row-level values in `player_rating_records`.
+8. Remove startup placeholder player rows for teams that receive real imported
+   player ratings.
+
+Manual import:
+
+```bash
+cd wcip-backend
+python -c "from etl.player_ratings import import_player_ratings_csv; print(import_player_ratings_csv('data/external/ea_player_ratings.csv', source_name='manual_csv', source_version='2026-06'))"
+```
+
+Pipeline wrapper:
+
+```bash
+python -c "from etl.pipeline import run_player_rating_import; print(run_player_rating_import())"
+```
+
+If the default file is missing, the wrapper returns a skipped status and leaves
+placeholder player records untouched.
+
+---
+
+## Source 5: Football-Data.org API
 
 ### Source Details
 - **Base URL:** `https://api.football-data.org/v4`
@@ -345,7 +404,7 @@ python -c "from etl.pipeline import run_historical_results; run_historical_resul
 # Manual full refresh
 python -c "from etl.pipeline import run_historical_results; run_historical_results(force_refresh=True)"
 
-# Full pipeline (results + Elo + rankings + WC2026 seed)
+# Full pipeline (results + Elo + rankings + WC2026 seed + optional player ratings)
 python -c "from etl.pipeline import run_full_pipeline; run_full_pipeline()"
 
 # Manual FIFA ranking snapshot refresh
@@ -374,6 +433,28 @@ curl -X POST /api/v1/ml/etl/run -H "Authorization: Bearer <token>"
 
 **File:** `ml/features.py`
 
+Active feature version: `v2`
+
+`v2` keeps the original 17 features first for compatibility with existing
+`v1` model files, then appends 16 player-level strength features:
+
+- `average_starting_xi_rating_diff`
+- `average_squad_rating_diff`
+- `top_5_player_rating_avg_diff`
+- `goalkeeper_rating_diff`
+- `defensive_unit_rating_diff`
+- `midfield_unit_rating_diff`
+- `attacking_unit_rating_diff`
+- `squad_depth_score_diff`
+- `star_player_score_diff`
+- `injury_burden_score_diff`
+- `player_form_score_diff`
+- `player_availability_score_diff`
+- `international_experience_score_diff`
+- `average_caps_diff`
+- `total_international_goals_diff`
+- `weighted_player_strength_diff`
+
 ### Real-Time (for prediction)
 
 ```python
@@ -381,8 +462,9 @@ build_feature_vector(home_team, away_team, match_date,
                      home_overrides=None, away_overrides=None) -> FeatureVector
 ```
 
-Called for every prediction request. Queries the DB for all 17 features and applies
-any overrides (from the Player Impact Lab or API request body).
+Called for every prediction request. Queries the DB for the full 33-feature v2
+vector and applies any overrides (from the Player Impact Lab or API request
+body).
 
 Override keys accepted: `elo`, `fifa_rank`, `form`, `injury_burden`,
 `coach_impact`, `chemistry`, `fitness_score`.
@@ -409,7 +491,7 @@ passes each historical match date into `build_feature_vector()` so ranking and
 Elo lookups are point-in-time.
 
 Returns:
-- `X`: `np.ndarray` of shape `(N, 17)`
+- `X`: `np.ndarray` of shape `(N, 33)`
 - `y`: `np.ndarray` of shape `(N,)` with values 0/1/2
 - `match_ids`: list of `match_result.id` values
 
@@ -419,9 +501,10 @@ Returns:
 persist_features(home_team, away_team, match_date, feature_vector) -> None
 ```
 
-Saves the computed 17-feature vector to `match_features` table linked to
-`match_result.id`. Subsequent training runs reuse stored vectors, avoiding
-re-computation of historical features.
+Saves the computed feature vector to `match_features` table linked to
+`match_result.id`. The table now includes the v2 player feature columns as
+well. Subsequent training runs can reuse stored vectors, avoiding recomputation
+of historical features.
 
 ---
 
@@ -515,7 +598,7 @@ match_results (49,306 local rows observed during audit)
     ↓  build_feature_matrix_from_db(since=2000-01-01)
 fifa_ranking_snapshots / fifa_ranking_entries
     ↓  point-in-time ranking lookup
-    ↓  [17 features × 25K+ rows from 2000+]
+    ↓  [33 features × 25K+ rows from 2000+]
 ML training (5 models)
     ↓  models/logistic.pkl
     ↓  models/random_forest.pkl
@@ -530,6 +613,21 @@ predict_hybrid(home, away)
     ↓  ensemble calculation      → weighted blend
     ↓  SHAP explanation          → top factors + narrative
 API response
+```
+
+### Winner Prediction Lineage
+
+```
+qualified_teams + teams + fifa_ranking snapshots + players/coaches
+    ↓  app/services/winner_predictions.py
+MonteCarloEngine  → statistical champion probability
+player/ranking/Elo strength score → ML-style team strength probability
+    ↓
+normalized ensemble champion probability
+    ↓
+GET /api/v1/world-cup/2026/winner-predictions
+    ↓
+WinnerPredictionsSection charts and table
 ```
 
 ---

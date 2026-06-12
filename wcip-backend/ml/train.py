@@ -245,10 +245,11 @@ def register_model(
     version: str,
     file_path: Path,
     metrics: Dict[str, float],
-    feature_version: str = "v1",
+    feature_version: str | None = None,
 ) -> None:
     """Record model metadata in the database."""
     try:
+        from ml.features import FEATURE_VERSION
         from app.db.base import SessionLocal
         from app.models.match_result import MLModelRecord
         from sqlalchemy import select
@@ -274,7 +275,7 @@ def register_model(
             record.log_loss = metrics.get("log_loss")
             record.calibration_score = metrics.get("calibration_score")
             record.training_samples = int(metrics.get("training_samples", 0))
-            record.feature_version = feature_version
+            record.feature_version = feature_version or FEATURE_VERSION
             record.is_active = True
 
             # Auto-calibrate ensemble weight from inverse log-loss

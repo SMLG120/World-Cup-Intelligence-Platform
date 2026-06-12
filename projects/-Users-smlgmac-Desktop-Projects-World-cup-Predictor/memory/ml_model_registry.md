@@ -24,12 +24,29 @@ Time-series 5-fold expanding-window CV. Three-class: 0=away win, 1=draw, 2=home 
 
 Weights from `ml_models.ensemble_weight` in DB; auto-normalised to sum to 1.
 
-## Feature Version v1 (17 features)
+## Feature Versions
+
+Stored active models are `v20260604` with feature version `v1` (17 features).
+The active feature generator is now `v2` (33 features). Runtime prediction
+slices v2 vectors down to the expected model input length for old v1 model files,
+but the ensemble should be retrained on v2 after official rankings and legal
+player ratings are loaded.
+
+### v1 Base Features
 
 elo_diff, fifa_rank_diff, xg_diff, xga_diff, goals_scored_diff, goals_conceded_diff,
 form_diff, avg_age_diff, market_value_diff, injury_burden_diff, coach_impact_diff,
 squad_chemistry_diff, travel_distance_km, rest_days, tournament_exp_diff,
 starting_xi_strength_diff, bench_strength_diff
+
+### v2 Added Features
+
+average_starting_xi_rating_diff, average_squad_rating_diff,
+top_5_player_rating_avg_diff, goalkeeper_rating_diff, defensive_unit_rating_diff,
+midfield_unit_rating_diff, attacking_unit_rating_diff, squad_depth_score_diff,
+star_player_score_diff, injury_burden_score_diff, player_form_score_diff,
+player_availability_score_diff, international_experience_score_diff,
+average_caps_diff, total_international_goals_diff, weighted_player_strength_diff
 
 Note: features 7–16 default to 0 when player/coach tables are empty.
 
@@ -45,14 +62,16 @@ Current installed: sklearn 1.9.0, xgboost 3.2.0, lightgbm 4.6.0, catboost 1.2.10
 ## FIFA Ranking Audit Note
 
 The active `v20260604` models predate the versioned FIFA ranking snapshot
-pipeline and point-in-time ranking lookup. During the June 2026 audit, the local
-DB had Brazil as FIFA rank #1 while the official FIFA men's ranking publication
-showed France #1 and Brazil #6. Treat these models as the current baseline, but
+pipeline, point-in-time ranking lookup, and v2 player-rating features. During the
+June 2026 audit, the local DB had Brazil as FIFA rank #1 while the official FIFA
+men's ranking publication showed France #1 and Brazil #6. Treat these models as
+the current baseline, but
 retrain after:
 
 - loading the latest official FIFA ranking snapshot
 - backfilling historical FIFA ranking snapshots where possible
 - backfilling Elo history where possible
+- importing legal-source player ratings/form data
 
 The leakage guardrail now uses historical ranking snapshots with
 `ranking_date <= match_date`; missing historical periods use neutral ranking

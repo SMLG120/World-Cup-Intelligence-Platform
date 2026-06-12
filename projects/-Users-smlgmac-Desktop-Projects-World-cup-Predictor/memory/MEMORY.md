@@ -14,3 +14,8 @@ Current FIFA ranking status is captured in `etl_data_sources.md` and
 current display cache. The June 2026 audit found Brazil incorrectly stored as
 local DB rank #1 while the latest official FIFA men's ranking publication showed
 France #1 and Brazil #6.
+
+Current winner-prediction status: `GET /api/v1/world-cup/2026/winner-predictions`
+returns ranked 2026 champion predictions with statistical, ML-style, and
+ensemble probabilities. Frontend pages use
+`components/winner-predictions-section.tsx`.

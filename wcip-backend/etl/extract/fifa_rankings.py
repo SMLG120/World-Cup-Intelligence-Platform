@@ -242,7 +242,7 @@ def _select_ranking_date(metadata: dict[str, Any], ranking_id: str | None) -> di
 def _normalize_entries(rows: Iterable[dict[str, Any]]) -> list[RankingEntry]:
     entries: list[RankingEntry] = []
     for row in rows:
-        raw_name = row.get("TeamName")
+        raw_name = _localized_text(row.get("TeamName"))
         rank = _optional_int(row.get("Rank"))
         if not raw_name or rank is None:
             continue
@@ -269,6 +269,46 @@ def _normalize_entries(rows: Iterable[dict[str, Any]]) -> list[RankingEntry]:
             )
         )
     return sorted(entries, key=lambda entry: entry.rank)
+
+
+def _localized_text(
+    value: Any,
+    *,
+    preferred_locales: tuple[str, ...] = ("en-GB", "en-US", "en"),
+) -> str | None:
+    """Return a display string from FIFA localized payload values."""
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        description = (
+            value.get("Description") or value.get("description") or value.get("Name")
+        )
+        return str(description) if description else None
+    if isinstance(value, list):
+        dict_items = [item for item in value if isinstance(item, dict)]
+        for locale in preferred_locales:
+            for item in dict_items:
+                if item.get("Locale") == locale or item.get("locale") == locale:
+                    description = (
+                        item.get("Description")
+                        or item.get("description")
+                        or item.get("Name")
+                    )
+                    if description:
+                        return str(description)
+        for item in dict_items:
+            description = (
+                item.get("Description") or item.get("description") or item.get("Name")
+            )
+            if description:
+                return str(description)
+        for item in value:
+            if item not in (None, ""):
+                return str(item)
+    return str(value)
 
 
 def _extract_next_data(html: str) -> dict[str, Any]:

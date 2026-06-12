@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChampionChart, ChampionLegend } from "@/components/champion-chart";
 import { Bracket } from "@/components/bracket";
+import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { pct, ordinal } from "@/lib/utils";
 
 // Sync endpoint caps at 2000 runs; larger runs use the authed async /simulations.
@@ -30,6 +31,8 @@ export default function TournamentPage() {
           times over and aggregate how often each nation reaches each round.
         </p>
       </header>
+
+      <WinnerPredictionsSection compact />
 
       <Card>
         <CardBody className="flex flex-wrap items-end gap-4">

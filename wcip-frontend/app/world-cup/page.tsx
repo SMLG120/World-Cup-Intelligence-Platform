@@ -12,6 +12,7 @@ import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { pct, ordinal } from "@/lib/utils";
 
 // ── Colour palette per confederation ────────────────────────────────────────
@@ -261,6 +262,8 @@ export default function WorldCupPage() {
           </Button>
         </div>
       </motion.header>
+
+      <WinnerPredictionsSection />
 
       {/* ── Tabs ── */}
       <Tabs value={tab} onValueChange={setTab}>

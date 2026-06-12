@@ -207,13 +207,13 @@ def _compute_shap(model_name: str, fv: FeatureVector) -> Optional[List[float]]:
     """Compute SHAP values for the home_win probability."""
     try:
         import shap
-        from ml.predict import _load_model
+        from ml.predict import _features_for_model, _load_model
 
         model = _load_model(model_name)
         if model is None:
             return None
 
-        X = fv.features.reshape(1, -1)
+        X = _features_for_model(model, fv)
 
         # Use TreeExplainer for tree-based models, LinearExplainer for logistic
         if model_name == "logistic":
@@ -276,7 +276,25 @@ def _feature_importance_explanation(
             0.03,  # tournament_exp_diff
             0.06,  # starting_xi_strength_diff
             0.04,  # bench_strength_diff
+            0.05,  # average_starting_xi_rating_diff
+            0.04,  # average_squad_rating_diff
+            0.05,  # top_5_player_rating_avg_diff
+            0.04,  # goalkeeper_rating_diff
+            0.04,  # defensive_unit_rating_diff
+            0.04,  # midfield_unit_rating_diff
+            0.04,  # attacking_unit_rating_diff
+            0.05,  # squad_depth_score_diff
+            0.05,  # star_player_score_diff
+            0.05,  # injury_burden_score_diff
+            0.05,  # player_form_score_diff
+            0.06,  # player_availability_score_diff
+            0.04,  # international_experience_score_diff
+            0.03,  # average_caps_diff
+            0.03,  # total_international_goals_diff
+            0.06,  # weighted_player_strength_diff
         ])
+        if len(importance_weights) != len(features):
+            importance_weights = np.resize(importance_weights, len(features))
         # Normalize features to [-1, 1] range
         norm_features = np.clip(features / (np.abs(features).max() + 1e-8), -1, 1)
         impacts = (norm_features * importance_weights).tolist()
@@ -299,6 +317,22 @@ def _feature_importance_explanation(
         "tournament_exp_diff": "World Cup Experience Difference",
         "starting_xi_strength_diff": "Starting XI Strength",
         "bench_strength_diff": "Bench Depth",
+        "average_starting_xi_rating_diff": "Average Starting XI Rating",
+        "average_squad_rating_diff": "Average Squad Rating",
+        "top_5_player_rating_avg_diff": "Top 5 Player Rating",
+        "goalkeeper_rating_diff": "Goalkeeper Rating",
+        "defensive_unit_rating_diff": "Defensive Unit Rating",
+        "midfield_unit_rating_diff": "Midfield Unit Rating",
+        "attacking_unit_rating_diff": "Attacking Unit Rating",
+        "squad_depth_score_diff": "Squad Depth Score",
+        "star_player_score_diff": "Star Player Score",
+        "injury_burden_score_diff": "Player Availability From Injuries",
+        "player_form_score_diff": "Player Form Score",
+        "player_availability_score_diff": "Player Availability Score",
+        "international_experience_score_diff": "International Experience",
+        "average_caps_diff": "Average International Caps",
+        "total_international_goals_diff": "Total International Goals",
+        "weighted_player_strength_diff": "Weighted Player Strength",
     }
 
     factors = []

@@ -167,6 +167,15 @@ export function useWC2026Simulate() {
   });
 }
 
+export function useWorldCupWinnerPredictions(runs = 5000, seed = 12345) {
+  return useQuery({
+    queryKey: ["wc2026-winner-predictions", runs, seed],
+    queryFn: () => api.wc2026WinnerPredictions(runs, seed),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+}
+
 export function useWC2026TeamDetail(teamName: string, enabled = true) {
   return useQuery({
     queryKey: ["wc2026-team-detail", teamName],

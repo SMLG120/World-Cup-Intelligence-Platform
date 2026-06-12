@@ -41,6 +41,7 @@ class TeamProbabilities:
     semi: float
     quarter: float
     round_of_16: float
+    round_of_32: float
     expected_finish: float
     champion_ci_low: float
     champion_ci_high: float
@@ -70,6 +71,7 @@ def _run_chunk(args) -> dict:
     semi = defaultdict(int)
     quarter = defaultdict(int)
     r16 = defaultdict(int)
+    r32 = defaultdict(int)
     finish_sum = defaultdict(float)
     champ_per_team_runs = defaultdict(list)  # for variance across this chunk
 
@@ -78,6 +80,7 @@ def _run_chunk(args) -> dict:
     for _ in range(n_runs):
         res = engine.simulate()
         reached_r16 = set(res.round_of_16)
+        reached_r32 = set(getattr(res, "round_of_32", []))
         reached_qf = set(res.quarter_finalists)
         reached_sf = set(res.semi_finalists)
         finalists = {res.champion, res.runner_up}
@@ -99,6 +102,8 @@ def _run_chunk(args) -> dict:
 
         for t in reached_r16:
             r16[t] += 1
+        for t in reached_r32:
+            r32[t] += 1
         for t in reached_qf:
             quarter[t] += 1
         for t in reached_sf:
@@ -114,6 +119,7 @@ def _run_chunk(args) -> dict:
         "semi": dict(semi),
         "quarter": dict(quarter),
         "r16": dict(r16),
+        "r32": dict(r32),
         "finish_sum": dict(finish_sum),
     }
 
@@ -184,10 +190,11 @@ class MonteCarloEngine:
         semi = defaultdict(int)
         quarter = defaultdict(int)
         r16 = defaultdict(int)
+        r32 = defaultdict(int)
         finish_sum = defaultdict(float)
         for p in partials:
             for d, key in ((champ, "champ"), (final, "final"), (semi, "semi"),
-                           (quarter, "quarter"), (r16, "r16")):
+                           (quarter, "quarter"), (r16, "r16"), (r32, "r32")):
                 for t, v in p[key].items():
                     d[t] += v
             for t, v in p["finish_sum"].items():
@@ -204,6 +211,7 @@ class MonteCarloEngine:
                 semi=semi.get(t, 0) / n_runs,
                 quarter=quarter.get(t, 0) / n_runs,
                 round_of_16=r16.get(t, 0) / n_runs,
+                round_of_32=r32.get(t, 0) / n_runs,
                 expected_finish=finish_sum.get(t, 0.0) / n_runs,
                 champion_ci_low=ci_low,
                 champion_ci_high=ci_high,

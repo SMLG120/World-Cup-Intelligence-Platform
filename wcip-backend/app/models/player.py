@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -57,6 +57,11 @@ class Player(Base):
     market_value_eur: Mapped[float | None] = mapped_column(Float)
     international_caps: Mapped[int] = mapped_column(Integer, default=0)
     international_goals: Mapped[int] = mapped_column(Integer, default=0)
+    player_rating: Mapped[float | None] = mapped_column(Float)
+    ea_fc_rating: Mapped[float | None] = mapped_column(Float)
+    player_rating_source: Mapped[str | None] = mapped_column(String(120))
+    player_rating_version: Mapped[str | None] = mapped_column(String(80))
+    player_rating_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Computed scores (populated by feature pipeline)
     recent_form_score: Mapped[float] = mapped_column(Float, default=0.5)
@@ -66,6 +71,53 @@ class Player(Base):
     data_source: Mapped[str | None] = mapped_column(String(80))
     external_id: Mapped[str | None] = mapped_column(String(80), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class PlayerRatingImport(Base):
+    """One legal player-rating import batch."""
+
+    __tablename__ = "player_rating_imports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_name: Mapped[str] = mapped_column(String(120), index=True)
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_file: Mapped[str | None] = mapped_column(String(500))
+    source_version: Mapped[str] = mapped_column(String(80), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="success", index=True)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    valid_rows: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_rows: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class PlayerRatingRecord(Base):
+    """Historical player rating value from an import batch."""
+
+    __tablename__ = "player_rating_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "import_id",
+            "team_name",
+            "player_name",
+            name="uq_player_rating_import_team_player",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    import_id: Mapped[int] = mapped_column(ForeignKey("player_rating_imports.id"), index=True)
+    player_id: Mapped[int | None] = mapped_column(ForeignKey("players.id"), index=True)
+    player_name: Mapped[str] = mapped_column(String(150), index=True)
+    team_name: Mapped[str] = mapped_column(String(120), index=True)
+    position: Mapped[str | None] = mapped_column(String(30))
+    club: Mapped[str | None] = mapped_column(String(120))
+    rating: Mapped[float | None] = mapped_column(Float)
+    ea_fc_rating: Mapped[float | None] = mapped_column(Float)
+    recent_form_score: Mapped[float | None] = mapped_column(Float)
+    source_row_hash: Mapped[str] = mapped_column(String(64), index=True)
+    raw_payload: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Coach(Base):

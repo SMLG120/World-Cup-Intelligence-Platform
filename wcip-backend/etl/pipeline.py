@@ -116,6 +116,17 @@ def run_wc2026_seed(source_path: str | Path | None = None) -> dict:
     return _run_wc2026_seed(source_path=source_path)
 
 
+def run_player_rating_import(source_path: str | Path | None = None) -> dict:
+    """Import legal player ratings from CSV when a source file is available."""
+    from etl.player_ratings import import_player_ratings_csv
+
+    path = source_path or Path(__file__).parents[1] / "data" / "external" / "ea_player_ratings.csv"
+    if not Path(path).exists():
+        logger.info("Player rating CSV not found at %s; skipping import", path)
+        return {"status": "skipped", "reason": "source_file_not_found", "source_file": str(path)}
+    return import_player_ratings_csv(path)
+
+
 def run_full_pipeline(force_refresh: bool = False) -> dict:
     """Run all ETL jobs in order."""
     logger.info("Starting full ETL pipeline (force_refresh=%s)", force_refresh)
@@ -144,6 +155,12 @@ def run_full_pipeline(force_refresh: bool = False) -> dict:
     except Exception as e:
         logger.error("WC2026 seed failed: %s", e)
         results["wc2026_seed_error"] = str(e)
+
+    try:
+        results["player_ratings"] = run_player_rating_import()
+    except Exception as e:
+        logger.error("Player rating import failed: %s", e)
+        results["player_ratings_error"] = str(e)
 
     logger.info("ETL pipeline complete: %s", results)
     return results

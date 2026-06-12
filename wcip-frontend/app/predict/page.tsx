@@ -12,6 +12,7 @@ import type { MatchPrediction, HybridPrediction } from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { pct } from "@/lib/utils";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -386,6 +387,8 @@ export default function PredictPage() {
           Adjust injuries, form, and coaching to model any scenario.
         </p>
       </header>
+
+      <WinnerPredictionsSection compact />
 
       {/* Controls card */}
       <Card>

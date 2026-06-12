@@ -19,7 +19,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `etl/load/db_loader.py` — idempotent upsert loaders (batch 500, in-run dedup)
 - ✅ `etl/schedulers/celery_tasks.py` — daily results, weekly Elo, daily FIFA ranking Celery tasks
 
-### Database Tables (15 total)
+### Database Tables (19 total)
 - ✅ `users` — accounts, roles, refresh tokens
 - ✅ `audit_logs` — admin audit trail
 - ✅ `teams` — team metadata, Elo, FIFA rank, confederation
@@ -35,6 +35,10 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `qualified_teams` — WC2026 qualification tracker (48/48, official groups loaded)
 - ✅ `fifa_ranking_snapshots` — immutable FIFA ranking publications
 - ✅ `fifa_ranking_entries` — team ranks, points, and movement per snapshot
+- ✅ `team_rankings` — provider-agnostic ranking records per snapshot
+- ✅ `ranking_source_logs` — ranking fetch/load audit trail
+- ✅ `player_rating_imports` — legal-source rating import batches
+- ✅ `player_rating_records` — historical player-rating rows per import
 
 ### Data Quality
 - ✅ Unique constraint on (home_team, away_team, match_date) — duplicates rejected at DB level
@@ -44,6 +48,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ WC2026 validation script for official teams, groups, roster placeholders,
   coaches, prediction readiness, and tournament placement
 - ✅ FIFA ranking versioning / snapshot tagging
+- ✅ Ranking source logging for fetch/load traceability
+- ✅ Legal CSV player-rating import with validation and versioning
 - 📋 Historical FIFA ranking backfill before first snapshot ingestion date
 - 📋 Broader data versioning for non-ranking external sources
 - 📋 StatsBomb Open Data integration (xG, shot-level data)
@@ -53,13 +59,14 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 ## ML Layer
 
 ### Feature Store
-- ✅ `ml/features.py` — 17-feature engineering pipeline (v1)
+- ✅ `ml/features.py` — 33-feature engineering pipeline (v2; v1-compatible prefix)
 - ✅ All features as (home − away) differentials for sign-consistent interpretation
 - ✅ `build_feature_vector()` — real-time feature computation for any match
 - ✅ `build_feature_matrix_from_db()` — batch matrix for training (25K+ samples from 2000+)
 - ✅ `persist_features()` — saves computed vector to `match_features` table
 - ✅ Point-in-time FIFA ranking lookup prevents current-rank leakage into historical rows
 - ✅ Point-in-time Elo lookup uses `elo_history` or neutral fallback for historical rows
+- ✅ Player rating, unit strength, squad depth, form, availability, caps, goals, and weighted player-strength features
 
 ### Models
 - ✅ Logistic Regression — Pipeline(StandardScaler + LogisticRegression); acc 57.68%, ll 0.923
@@ -170,6 +177,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /ml/feature-names` — feature name list
 - ✅ `GET /ml/explanations` — SHAP explanation
 - ✅ `POST /ml/etl/run` — trigger ETL (admin, async)
+- ✅ `GET /world-cup/2026/winner-predictions` — ranked WC2026 winner predictions
 - ✅ `GET /rankings/fifa/latest` — current stored FIFA ranking snapshot
 - ✅ `GET /rankings/fifa/snapshots` — list stored ranking snapshots
 - ✅ `GET /rankings/fifa/snapshots/{ranking_id}` — historical ranking snapshot
@@ -213,6 +221,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 ### Pages
 - ✅ `/dashboard` — overview, top contenders, recent simulations
 - ✅ `/wc2026` — qualified teams, official groups, Monte Carlo simulation
+- ✅ `components/winner-predictions-section.tsx` — winner prediction table and charts
+- ✅ Winner prediction sections on `/dashboard`, `/wc2026`, `/world-cup`, `/tournament`, `/predict`
 - ✅ `/compare` — statistical vs all 5 ML models vs ensemble, side-by-side
 - ✅ `/player-lab` — load squads, toggle injuries/suspensions, override form/coach
 - ✅ `/models` — model metrics, ensemble weights, feature vector explorer

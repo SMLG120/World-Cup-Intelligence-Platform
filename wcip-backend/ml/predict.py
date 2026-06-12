@@ -58,6 +58,41 @@ def invalidate_model_cache() -> None:
     _load_model.cache_clear()
 
 
+def _model_feature_count(model: Any) -> int | None:
+    count = getattr(model, "n_features_in_", None)
+    if count is not None:
+        return int(count)
+    named_steps = getattr(model, "named_steps", None)
+    if named_steps:
+        for step in reversed(list(named_steps.values())):
+            count = getattr(step, "n_features_in_", None)
+            if count is not None:
+                return int(count)
+    return None
+
+
+def _features_for_model(model: Any, fv: FeatureVector) -> np.ndarray:
+    X = fv.features.reshape(1, -1)
+    expected = _model_feature_count(model)
+    if expected is None or expected == X.shape[1]:
+        return X
+    if expected < X.shape[1]:
+        logger.warning(
+            "Model expects %s features but feature vector has %s; using leading features for compatibility",
+            expected,
+            X.shape[1],
+        )
+        return X[:, :expected]
+    logger.warning(
+        "Model expects %s features but feature vector has %s; padding with zeros",
+        expected,
+        X.shape[1],
+    )
+    padded = np.zeros((1, expected), dtype=X.dtype)
+    padded[:, :X.shape[1]] = X
+    return padded
+
+
 def predict_with_model(name: str, fv: FeatureVector) -> Optional[Dict[str, float]]:
     """Predict outcome probabilities from a single model.
 
@@ -67,7 +102,7 @@ def predict_with_model(name: str, fv: FeatureVector) -> Optional[Dict[str, float
     if model is None:
         return None
 
-    X = fv.features.reshape(1, -1)
+    X = _features_for_model(model, fv)
     try:
         proba = model.predict_proba(X)[0]
         # Classes: 0=away_win, 1=draw, 2=home_win

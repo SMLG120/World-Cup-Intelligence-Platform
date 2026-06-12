@@ -7,6 +7,7 @@ import type {
   TournamentResult, User, EloPoint, AdminAnalytics,
   HybridPrediction, MLModel, FeatureVector, QualifiedTeam,
   WC2026Groups, WC2026Simulation, TeamDetail, Player,
+  WorldCupWinnerPrediction,
 } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || "/backend/api/v1";
@@ -32,7 +33,13 @@ export const tokenStore = {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public errorCode?: string,
+    public requestId?: string | null,
+    public detail?: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -72,13 +79,20 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;
+    let errorCode: string | undefined;
+    let requestId: string | null | undefined;
+    let rawDetail: unknown;
     try {
       const data = await res.json();
-      detail = typeof data.detail === "string" ? data.detail
+      errorCode = typeof data.error_code === "string" ? data.error_code : undefined;
+      requestId = typeof data.request_id === "string" ? data.request_id : null;
+      rawDetail = data.detail;
+      detail = typeof data.message === "string" ? data.message
+        : typeof data.detail === "string" ? data.detail
         : Array.isArray(data.detail) ? data.detail.map((d: { msg: string }) => d.msg).join(", ")
         : detail;
     } catch { /* non-JSON error body */ }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, errorCode, requestId, rawDetail);
   }
 
   if (res.status === 204) return undefined as T;
@@ -202,6 +216,11 @@ export const api = {
       method: "POST",
       body: { year: 2026, runs, overrides },
     }),
+
+  wc2026WinnerPredictions: (runs = 5000, seed = 12345) =>
+    request<WorldCupWinnerPrediction[]>(
+      `/world-cup/2026/winner-predictions?runs=${runs}&seed=${seed}`
+    ),
 
   wc2026Schedule: () => request<unknown>("/world-cup/schedule?year=2026"),
 

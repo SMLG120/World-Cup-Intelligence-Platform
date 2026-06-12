@@ -41,7 +41,7 @@ exploration of World Cup 2026.
 | Training samples | 25,243 matches |
 | Unique national teams | 327 |
 | Outcome distribution | Home win 48.2% / Draw 22.3% / Away win 27.8% |
-| Feature version | v1 (17 features) |
+| Feature version | Stored models: v1 (17 features); active feature generator: v2 (33 features) |
 
 The training window starts at 2000-01-01 to reduce the influence of pre-modern
 football conditions (different fitness, travel, tactics) while still capturing
@@ -55,7 +55,13 @@ to output calibrated probabilities rather than to maximise balanced accuracy.
 
 ---
 
-## Feature Set (v1 — 17 features)
+## Feature Set
+
+The active feature generator is `v2` with 33 features. The first 17 features are
+the original `v1` ordering so existing model files can still be used through
+compatibility slicing until the full model set is retrained.
+
+### v1 Base Features
 
 All features are (home − away) differentials. Positive = favours home team.
 
@@ -79,11 +85,31 @@ All features are (home − away) differentials. Positive = favours home team.
 | `starting_xi_strength_diff` | Mean Elo contribution of starting XI | `players` stats |
 | `bench_strength_diff` | Mean Elo contribution of bench | `players` stats |
 
-**Important:** The `players` and `coaches` tables are schema-complete but empty until
-football-data.org ETL runs with a valid API key. In that state, features 7–11 and 15–16
-default to 0. This reduces their signal contribution but does not invalidate predictions
-— the model was trained on the same feature space where those values default to 0 when
-player data is unavailable.
+### v2 Player-Strength Features
+
+| Feature | Description | Data Source |
+|---|---|---|
+| `average_starting_xi_rating_diff` | Top-11 player rating gap | `players.player_rating` / CSV import |
+| `average_squad_rating_diff` | Full squad rating gap | `players.player_rating` / CSV import |
+| `top_5_player_rating_avg_diff` | Star-player group rating gap | `players.player_rating` / CSV import |
+| `goalkeeper_rating_diff` | Best goalkeeper rating gap | `players.position`, ratings |
+| `defensive_unit_rating_diff` | Defensive unit rating gap | `players.position`, ratings |
+| `midfield_unit_rating_diff` | Midfield unit rating gap | `players.position`, ratings |
+| `attacking_unit_rating_diff` | Forward unit rating gap | `players.position`, ratings |
+| `squad_depth_score_diff` | Bench/depth quality gap | ratings and squad size |
+| `star_player_score_diff` | Highest-rated-player gap | ratings |
+| `injury_burden_score_diff` | Availability after injuries/suspensions | `players.injured`, `players.suspended` |
+| `player_form_score_diff` | Recent player form gap | CSV import / player table |
+| `player_availability_score_diff` | Available squad share gap | player status fields |
+| `international_experience_score_diff` | Capped-player experience score | `international_caps` |
+| `average_caps_diff` | Average caps per player | `international_caps` |
+| `total_international_goals_diff` | International goals gap | `international_goals` |
+| `weighted_player_strength_diff` | Rating weighted by form, availability, and caps | ratings, form, status, caps |
+
+**Important:** The `players` and `coaches` tables are schema-complete, but local
+startup rows are placeholders until a verified squad/rating source is imported.
+Missing player ratings fall back to neutral values and log warnings once per
+team, so prediction requests do not crash when licensed player data is absent.
 
 **Ranking leakage guardrail:** Historical feature generation reads the latest
 stored FIFA ranking snapshot with `ranking_date <= match_date`. If no historical
@@ -192,18 +218,19 @@ example): statistical 51.3% / 24.5% / 24.2%, ensemble 59.9% / 22.7% / 17.3%.
 ### Ranking Audit Note
 
 The stored `v20260604` models were trained before the FIFA ranking snapshot
-pipeline and point-in-time ranking lookup were added. During the June 2026 audit,
-the local `teams` table had Brazil ranked #1, while the current official FIFA
-men’s ranking publication identified France as #1 and Brazil as #6. The old
-models should therefore be treated as a baseline until official ranking snapshots
-are ingested, historical ranking snapshots are backfilled where possible, and
-the ensemble is retrained.
+pipeline, point-in-time ranking lookup, and v2 player-rating features were added.
+The prediction runtime keeps them usable by slicing v2 feature vectors down to
+the v1 feature count when a loaded model expects 17 inputs. Treat these models
+as baselines until official ranking snapshots and legal player-rating data are
+loaded and the full ensemble is retrained on `v2`.
 
 ---
 
 ## Model Selection Process
 
-1. All five models are trained on the same 17-feature matrix with the same time-series CV
+1. All five models are trained on the same time-series CV split. Stored
+   `v20260604` models used the 17-feature v1 matrix; the current retraining path
+   emits the 33-feature v2 matrix.
 2. Per-fold log-loss is recorded; means are used for ensemble weighting
 3. `ensemble_weight = (1 / log_loss) / Σ(1 / log_loss_j)` — normalised inverse log-loss
 4. Weights are re-normalised to sum to 1.0 in `ml_models` table after each retrain
@@ -224,10 +251,11 @@ predict from pre-match features. The training data has a 22.3% draw rate, but mo
 F1 for the draw class is lower than for win/loss. All five models show draw
 under-confidence.
 
-**Player/coach feature sparsity.** Eight of the 17 features (avg_age, market_value,
-injury_burden, coach_impact, squad_chemistry, travel_distance, starting_xi_strength,
-bench_strength) require populated player/coach tables. Until football-data.org ETL
-runs, these features default to 0, reducing model signal for those dimensions.
+**Player/coach feature sparsity.** The v2 player-strength features depend on
+populated player ratings, availability, form, caps, goals, and coach records.
+Until licensed player-rating CSV imports and football-data.org squad ETL are
+loaded, these dimensions use neutral defaults, reducing model signal without
+leaking current player information into historical rows.
 
 **No recent-form look-ahead.** The model uses the 10-match rolling average at the
 time of prediction. For a tournament starting in June 2026, the last competitive
@@ -321,3 +349,4 @@ on the target version. The ensemble weight calculation will update on next predi
 | eloratings.net | Public data | Attribution requested; no scraping restriction documented |
 | football-data.org | Free tier ToS | Rate-limited; commercial tiers for production use |
 | FIFA Rankings | Public display data | Ingest from FIFA ranking page/schedule payload; preserve source URL, schedule id, and snapshot hash |
+| Player ratings CSV | User-provided legal source | Do not scrape prohibited proprietary sites; store source/version/import history |

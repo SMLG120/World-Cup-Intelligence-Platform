@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 
 const CONFEDERATION_COLORS: Record<string, string> = {
   UEFA: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -106,6 +107,10 @@ export default function WC2026Page() {
               </span>
             </div>
           )}
+        </div>
+
+        <div className="mb-8">
+          <WinnerPredictionsSection />
         </div>
 
         {/* Tabs */}

@@ -1,7 +1,7 @@
 """FIFA ranking ingestion and point-in-time feature tests."""
 from datetime import date, datetime, timezone
 
-from etl.extract.fifa_rankings import RankingEntry, RankingSnapshot
+from etl.extract.fifa_rankings import RankingEntry, RankingSnapshot, _normalize_entries
 from etl.load.ranking_loader import load_fifa_ranking_snapshot
 from ml.features import _get_team_elo, _get_team_fifa_rank, build_feature_vector
 
@@ -16,6 +16,26 @@ def _snapshot(ranking_id: str, ranking_date: date, entries: list[RankingEntry]) 
         source_hash=f"test-{ranking_id}",
         entries=entries,
     )
+
+
+def test_fifa_ranking_extract_resolves_localized_team_names():
+    entries = _normalize_entries(
+        [
+            {
+                "TeamName": [{"Locale": "en-GB", "Description": "Argentina"}],
+                "IdCountry": "ARG",
+                "ConfederationName": "CONMEBOL",
+                "Rank": 1,
+                "PrevRank": 3,
+                "TotalPoints": 1877.27,
+                "PrevPoints": 1874.81,
+            }
+        ]
+    )
+
+    assert entries[0].team_name == "Argentina"
+    assert entries[0].raw_team_name == "Argentina"
+    assert entries[0].rank_change == 2
 
 
 def test_versioned_fifa_ranking_snapshot_is_loaded_and_exposed(client):

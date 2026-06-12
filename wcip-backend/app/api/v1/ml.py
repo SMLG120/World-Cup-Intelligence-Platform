@@ -186,8 +186,8 @@ def ml_features(
 @router.get("/feature-names")
 def ml_feature_names() -> Dict[str, Any]:
     """Return feature names and descriptions."""
-    from ml.features import FEATURE_NAMES
-    return {"feature_names": FEATURE_NAMES, "version": "v1", "count": len(FEATURE_NAMES)}
+    from ml.features import FEATURE_NAMES, FEATURE_VERSION
+    return {"feature_names": FEATURE_NAMES, "version": FEATURE_VERSION, "count": len(FEATURE_NAMES)}
 
 
 @router.get("/explanations")

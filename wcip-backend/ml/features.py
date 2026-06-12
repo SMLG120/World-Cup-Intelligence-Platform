@@ -1,10 +1,10 @@
 """Feature engineering pipeline.
 
-Builds a 17-feature vector for any (home_team, away_team, date) triplet.
+Builds a feature vector for any (home_team, away_team, date) triplet.
 Features are expressed as (home - away) differentials so a positive value
 always favours the home team.
 
-Feature list (v1):
+Feature list (v2):
   0  elo_diff
   1  fifa_rank_diff          (positive = home team has better rank, inverted)
   2  xg_diff                 (last-10-match avg xG)
@@ -22,6 +22,22 @@ Feature list (v1):
  14  tournament_exp_diff     (WC appearances)
  15  starting_xi_strength_diff
  16  bench_strength_diff
+ 17  average_starting_xi_rating_diff
+ 18  average_squad_rating_diff
+ 19  top_5_player_rating_avg_diff
+ 20  goalkeeper_rating_diff
+ 21  defensive_unit_rating_diff
+ 22  midfield_unit_rating_diff
+ 23  attacking_unit_rating_diff
+ 24  squad_depth_score_diff
+ 25  star_player_score_diff
+ 26  injury_burden_score_diff
+ 27  player_form_score_diff
+ 28  player_availability_score_diff
+ 29  international_experience_score_diff
+ 30  average_caps_diff
+ 31  total_international_goals_diff
+ 32  weighted_player_strength_diff
 """
 from __future__ import annotations
 
@@ -34,7 +50,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-FEATURE_VERSION = "v1"
+FEATURE_VERSION = "v2"
+BASE_FEATURE_COUNT = 17
 FEATURE_NAMES = [
     "elo_diff",
     "fifa_rank_diff",
@@ -53,9 +70,26 @@ FEATURE_NAMES = [
     "tournament_exp_diff",
     "starting_xi_strength_diff",
     "bench_strength_diff",
+    "average_starting_xi_rating_diff",
+    "average_squad_rating_diff",
+    "top_5_player_rating_avg_diff",
+    "goalkeeper_rating_diff",
+    "defensive_unit_rating_diff",
+    "midfield_unit_rating_diff",
+    "attacking_unit_rating_diff",
+    "squad_depth_score_diff",
+    "star_player_score_diff",
+    "injury_burden_score_diff",
+    "player_form_score_diff",
+    "player_availability_score_diff",
+    "international_experience_score_diff",
+    "average_caps_diff",
+    "total_international_goals_diff",
+    "weighted_player_strength_diff",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
+_WARNED_PLAYER_DATA: set[str] = set()
 
 
 class FeatureVector(NamedTuple):
@@ -289,6 +323,148 @@ def _get_squad_stats(team_name: str) -> Dict[str, float]:
         }
 
 
+def _warn_once(key: str, message: str) -> None:
+    if key in _WARNED_PLAYER_DATA:
+        return
+    _WARNED_PLAYER_DATA.add(key)
+    logger.warning(message)
+
+
+def _player_rating(player) -> float | None:
+    rating = getattr(player, "player_rating", None)
+    if rating is None:
+        rating = getattr(player, "ea_fc_rating", None)
+    if rating is None:
+        return None
+    return float(min(100.0, max(0.0, rating)))
+
+
+def _position_group(position: str | None) -> str:
+    text = (position or "").upper()
+    if text in {"GK", "GOALKEEPER"}:
+        return "GK"
+    if text in {"DEF", "DF", "CB", "LB", "RB", "LWB", "RWB", "DEFENDER"}:
+        return "DEF"
+    if text in {"MID", "MF", "DM", "CM", "AM", "CDM", "CAM", "MIDFIELDER"}:
+        return "MID"
+    if text in {"FWD", "FW", "ST", "CF", "LW", "RW", "FORWARD", "ATTACKER"}:
+        return "FWD"
+    return "UNK"
+
+
+def _mean_or(values: list[float], default: float) -> float:
+    return float(np.mean(values)) if values else default
+
+
+def _get_player_strength_stats(team_name: str) -> Dict[str, float]:
+    """Aggregate player rows into team-level strength features.
+
+    Missing ratings or sparse squads use neutral values so predictions never
+    crash because a licensed source file has not been imported yet.
+    """
+    neutral = {
+        "average_starting_xi_rating": 70.0,
+        "average_squad_rating": 70.0,
+        "top_5_player_rating_avg": 70.0,
+        "goalkeeper_rating": 70.0,
+        "defensive_unit_rating": 70.0,
+        "midfield_unit_rating": 70.0,
+        "attacking_unit_rating": 70.0,
+        "squad_depth_score": 0.70,
+        "star_player_score": 0.70,
+        "injury_burden_score": 1.0,
+        "player_form_score": 0.50,
+        "player_availability_score": 1.0,
+        "international_experience_score": 0.0,
+        "average_caps": 0.0,
+        "total_international_goals": 0.0,
+        "weighted_player_strength": 70.0,
+    }
+    try:
+        from sqlalchemy import select
+        from app.db.base import SessionLocal
+        from app.models.player import Player
+        db = SessionLocal()
+        try:
+            rows = db.scalars(select(Player).where(Player.team_name == team_name)).all()
+        finally:
+            db.close()
+    except Exception as exc:
+        _warn_once(f"{team_name}:player-query", f"Player strength query failed for {team_name}: {exc}")
+        return neutral
+
+    if not rows:
+        _warn_once(f"{team_name}:no-players", f"No player rows for {team_name}; using neutral player-strength defaults")
+        return neutral
+
+    rated = [(p, _player_rating(p)) for p in rows]
+    rated_values = [rating for _, rating in rated if rating is not None]
+    if not rated_values:
+        _warn_once(f"{team_name}:no-ratings", f"No player ratings for {team_name}; using neutral rating defaults")
+
+    def ratings_for(group: str) -> list[float]:
+        values = [
+            rating for player, rating in rated
+            if rating is not None and _position_group(player.position) == group
+        ]
+        return values
+
+    sorted_ratings = sorted(rated_values, reverse=True)
+    average_squad = _mean_or(rated_values, 70.0)
+    starting_xi = _mean_or(sorted_ratings[:11], average_squad)
+    top_5 = _mean_or(sorted_ratings[:5], average_squad)
+    goalkeeper = max(ratings_for("GK") or [average_squad])
+    defence = _mean_or(ratings_for("DEF"), average_squad)
+    midfield = _mean_or(ratings_for("MID"), average_squad)
+    attack = _mean_or(ratings_for("FWD"), average_squad)
+
+    available_rows = [p for p in rows if not p.injured and not p.suspended]
+    availability = len(available_rows) / max(len(rows), 1)
+    injury_burden_score = availability
+    form_scores = [
+        min(1.0, max(0.0, float(p.recent_form_score if p.recent_form_score is not None else 0.5)))
+        for p in rows
+    ]
+    player_form_score = _mean_or(form_scores, 0.5)
+    caps = [float(p.international_caps or 0) for p in rows]
+    goals = [float(p.international_goals or 0) for p in rows]
+    average_caps = _mean_or(caps, 0.0)
+    total_goals = float(sum(goals))
+    total_caps = float(sum(caps))
+    international_experience_score = min(1.0, math.log1p(total_caps) / math.log1p(1500.0))
+
+    weighted_values = []
+    for player, rating in rated:
+        base = rating if rating is not None else 70.0
+        available = 0.0 if player.injured or player.suspended else 1.0
+        form = min(1.0, max(0.0, float(player.recent_form_score or 0.5)))
+        caps_boost = min(1.10, 1.0 + math.log1p(player.international_caps or 0) / 100.0)
+        weighted_values.append(base * available * (0.75 + 0.25 * form) * caps_boost)
+
+    depth_pool = sorted_ratings[11:23] if len(sorted_ratings) > 11 else sorted_ratings
+    squad_depth_score = min(1.0, (len(rows) / 23.0) * (_mean_or(depth_pool, average_squad) / 100.0))
+    star_player_score = max(sorted_ratings or [70.0]) / 100.0
+
+    return {
+        "average_starting_xi_rating": starting_xi,
+        "average_squad_rating": average_squad,
+        "top_5_player_rating_avg": top_5,
+        "goalkeeper_rating": goalkeeper,
+        "defensive_unit_rating": defence,
+        "midfield_unit_rating": midfield,
+        "attacking_unit_rating": attack,
+        "squad_depth_score": squad_depth_score,
+        "star_player_score": star_player_score,
+        "injury_burden_score": injury_burden_score,
+        "player_form_score": player_form_score,
+        "player_availability_score": availability,
+        "international_experience_score": international_experience_score,
+        "average_caps": average_caps,
+        "total_international_goals": total_goals,
+        "weighted_player_strength": _mean_or(weighted_values, 70.0),
+    }
+
+
 def _get_coach_impact(team_name: str) -> float:
     """Return the coach impact score for a team."""
     try:
@@ -426,6 +602,31 @@ def build_feature_vector(
     starting_xi_strength_diff = (h_elo / 2000) * h_fitness - (a_elo / 2000) * a_fitness
     bench_strength_diff = market_value_diff * 0.1  # proxy
 
+    h_player = _get_player_strength_stats(home_team)
+    a_player = _get_player_strength_stats(away_team)
+    player_feature_names = [
+        "average_starting_xi_rating",
+        "average_squad_rating",
+        "top_5_player_rating_avg",
+        "goalkeeper_rating",
+        "defensive_unit_rating",
+        "midfield_unit_rating",
+        "attacking_unit_rating",
+        "squad_depth_score",
+        "star_player_score",
+        "injury_burden_score",
+        "player_form_score",
+        "player_availability_score",
+        "international_experience_score",
+        "average_caps",
+        "total_international_goals",
+        "weighted_player_strength",
+    ]
+    player_diffs = [
+        float(h_player[name] - a_player[name])
+        for name in player_feature_names
+    ]
+
     vec = np.array([
         elo_diff,
         fifa_rank_diff,
@@ -444,6 +645,7 @@ def build_feature_vector(
         float(tournament_exp_diff),
         starting_xi_strength_diff,
         bench_strength_diff,
+        *player_diffs,
     ], dtype=np.float32)
 
     return FeatureVector(
@@ -540,6 +742,23 @@ def persist_features(home_team: str, away_team: str, match_date: date,
         record.tournament_exp_diff = float(f[14])
         record.starting_xi_strength_diff = float(f[15])
         record.bench_strength_diff = float(f[16])
+        if len(f) > BASE_FEATURE_COUNT:
+            record.average_starting_xi_rating_diff = float(f[17])
+            record.average_squad_rating_diff = float(f[18])
+            record.top_5_player_rating_avg_diff = float(f[19])
+            record.goalkeeper_rating_diff = float(f[20])
+            record.defensive_unit_rating_diff = float(f[21])
+            record.midfield_unit_rating_diff = float(f[22])
+            record.attacking_unit_rating_diff = float(f[23])
+            record.squad_depth_score_diff = float(f[24])
+            record.star_player_score_diff = float(f[25])
+            record.injury_burden_score_diff = float(f[26])
+            record.player_form_score_diff = float(f[27])
+            record.player_availability_score_diff = float(f[28])
+            record.international_experience_score_diff = float(f[29])
+            record.average_caps_diff = float(f[30])
+            record.total_international_goals_diff = float(f[31])
+            record.weighted_player_strength_diff = float(f[32])
         record.feature_version = FEATURE_VERSION
 
         db.commit()

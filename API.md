@@ -71,6 +71,54 @@ Starts a background refresh. When `trigger_retraining=true`, the monitor can run
 the ML retraining workflow if the new ranking snapshot crosses material-change
 thresholds.
 
+## World Cup Winner Predictions
+
+```http
+GET /api/v1/world-cup/2026/winner-predictions?runs=5000&seed=12345
+```
+
+Returns ranked 2026 champion probabilities enriched with team metadata,
+simulation outputs, ML-style strength probabilities, ensemble probabilities, and
+short explanations.
+
+Response shape:
+
+```json
+[
+  {
+    "rank": 1,
+    "team_id": 12,
+    "team_name": "France",
+    "fifa_code": "FRA",
+    "group": "Group I",
+    "confederation": "UEFA",
+    "fifa_rank": 1,
+    "champion_probability": 14.2,
+    "final_probability": 27.8,
+    "semifinal_probability": 42.4,
+    "quarterfinal_probability": 58.1,
+    "round_of_16_probability": 73.5,
+    "group_qualification_probability": 91.0,
+    "expected_finish": 5.8,
+    "confidence_interval_low": 12.9,
+    "confidence_interval_high": 15.6,
+    "statistical_probability": 13.1,
+    "ml_probability": 15.0,
+    "ensemble_probability": 14.2,
+    "explanation": "France ranks here because of strong Elo, elite FIFA ranking, high player-strength rating."
+  }
+]
+```
+
+`champion_probability` and `ensemble_probability` are normalized percentages
+that sum to approximately 100 across all returned teams.
+
+Compatibility alias:
+
+```http
+GET /api/v1/world_cup/2026/winner-predictions?runs=5000&seed=12345
+```
+
 ## ML And ETL
 
 | Method | Path | Purpose |
@@ -87,6 +135,10 @@ thresholds.
 Ranking-sensitive ML features use point-in-time lookups. Historical requests read
 the latest stored ranking snapshot on or before the match date; current requests
 use the latest stored snapshot or current team cache.
+
+The active feature vector is `v2`. It keeps the original 17 fields first and
+adds player rating, squad depth, position-unit strength, form, availability,
+caps, goals, and weighted player strength fields.
 
 ## Core User Workflows
 

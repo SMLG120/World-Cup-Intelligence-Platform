@@ -29,7 +29,7 @@ The platform is three independent packages that communicate over REST:
 │    auth · teams · matches · simulations · scenarios              │
 │    ml · rankings · world_cup · admin                             │
 │                                                                  │
-│  39 endpoints · OpenAPI at /docs                                 │
+│  Versioned endpoint groups · OpenAPI at /docs                    │
 └──────────┬──────────────┬──────────────────┬────────────────────┘
            │              │                  │
      ┌─────▼─────┐  ┌─────▼──────┐   ┌──────▼──────────────────┐
@@ -39,7 +39,7 @@ The platform is three independent packages that communicate over REST:
      │           │  │  features  │   │ SQLite (dev)            │
      │elo.py     │  │  train     │   │ PostgreSQL (prod)       │
      │scoreline  │  │  predict   │   │                         │
-     │montecarlo │  │  ensemble  │   │ 15 tables               │
+     │montecarlo │  │  ensemble  │   │ 19 tables               │
      └─────┬─────┘  │  evaluate  │   │ 49,306 match records    │
            │        │  retrain   │   │ 48 WC2026 teams         │
            └────────┤            │   │ 5 trained models        │
@@ -86,15 +86,17 @@ wcip-backend/
 │   │                               seed_teams_2022()
 │   │                               seed_qualified_teams_2026()
 │   │                               seed_2026_teams_into_team_table()
+│   │                               SQLite dev guard for new runtime columns
 │   │
 │   ├── models/                   SQLAlchemy 2.0 ORM (mapped_column syntax)
 │   │   ├── user.py               User, AuditLog
 │   │   ├── team.py               Team, EloHistory
 │   │   ├── simulation.py         Simulation, SimulationRun, SavedScenario
-│   │   ├── player.py             Player (25 fields), Coach (13 fields)
+│   │   ├── player.py             Player, Coach, player-rating import history
 │   │   ├── match_result.py       MatchResult, MatchFeatures,
 │   │   │                         MLModelRecord, QualifiedTeam
-│   │   └── ranking.py            FifaRankingSnapshot, FifaRankingEntry
+│   │   └── ranking.py            FifaRankingSnapshot, FifaRankingEntry,
+│   │                             TeamRanking, RankingSourceLog
 │   │
 │   ├── schemas/                  Pydantic v2 request/response models
 │   │
@@ -102,7 +104,8 @@ wcip-backend/
 │   │   └── repos.py              Typed data-access layer (no raw SQL)
 │   │
 │   ├── services/
-│   │   └── prediction.py         Bridge: API/Celery → wcip engine
+│   │   ├── prediction.py         Bridge: API/Celery → wcip engine
+│   │   └── winner_predictions.py WC2026 statistical + ML-style ensemble table
 │   │
 │   ├── api/v1/
 │   │   ├── auth.py               register, login, refresh, me
@@ -114,7 +117,8 @@ wcip-backend/
 │   │   │                         explanations, etl/run
 │   │   ├── rankings.py           FIFA ranking snapshots + admin refresh
 │   │   ├── world_cup.py          qualified-teams, groups, bracket, simulate,
-│   │   │                         schedule, teams/{name}, players/{name}
+│   │   │                         schedule, teams/{name}, players/{name},
+│   │   │                         2026/winner-predictions
 │   │   └── router.py             api_router — includes all sub-routers
 │   │
 │   └── workers/
@@ -131,7 +135,7 @@ wcip-backend/
 │       └── wc2026.py             WC2026 format + CONFIRMED_QUALIFIERS seed
 │
 ├── ml/
-│   ├── features.py               build_feature_vector(), FEATURE_NAMES (v1, 17)
+│   ├── features.py               build_feature_vector(), FEATURE_NAMES (v2, 33)
 │   │                             build_feature_matrix_from_db() for training
 │   ├── train.py                  run_training(): time-series CV, save, register
 │   │                             CLI: python -m ml.train [--model] [--full-refresh]
@@ -146,6 +150,7 @@ wcip-backend/
 └── etl/
     ├── pipeline.py               run_historical_results(), run_elo_update(),
     │                             run_fifa_rankings_update(),
+    │                             run_player_rating_import(),
     │                             run_full_pipeline() + ETL state file
     ├── extract/
     │   ├── international_results.py  martj42 CSV download + cache + parse
@@ -160,6 +165,8 @@ wcip-backend/
     │   ├── db_loader.py          load_match_results(), load_players(),
     │   │                         load_qualified_teams()
     │   └── ranking_loader.py     versioned FIFA ranking snapshot loader
+    ├── player_ratings/
+    │   └── csv_import.py         legal CSV player rating import + history
     ├── monitoring/
     │   └── ranking_monitor.py    ranking change detection + retrain trigger
     └── schedulers/
@@ -202,12 +209,12 @@ wcip-frontend/
 │   ├── models/page.tsx           Model Dashboard
 │   │                               ModelCard per model (metric bars)
 │   │                               Ensemble weight distribution bar
-│   │                               FeatureImportanceChart (17 features)
+│   │                               FeatureImportanceChart (33 features)
 │   │                               Feature Vector Explorer
 │   │
 │   ├── dashboard/page.tsx        Overview + top contenders + recent sims
 │   ├── simulate/page.tsx         Statistical single-match predictor
-│   ├── tournament/page.tsx       Monte Carlo runner + bracket
+│   ├── tournament/page.tsx       Monte Carlo runner + winner probabilities
 │   ├── scenarios/page.tsx        2–3 scenario comparison
 │   ├── teams/page.tsx            Sortable team table
 │   ├── team/[id]/page.tsx        Team detail + Elo trend chart
@@ -224,6 +231,8 @@ wcip-frontend/
 │   ├── probability-bar.tsx       Stacked W/D/L bar with percentages
 │   ├── bracket.tsx               Animated knockout bracket (Framer Motion)
 │   ├── champion-chart.tsx        Champion probability bar chart (Recharts)
+│   ├── winner-predictions-section.tsx
+│   │                             WC2026 champion charts, comparison, table
 │   ├── require-auth.tsx          Route guard (auth + admin variants)
 │   └── ui/                       button, card, input, select, slider,
 │                                 skeleton, badge (shadcn-compatible)
@@ -234,12 +243,13 @@ wcip-frontend/
     │                               MLOutcome, HybridPrediction, PredictionExplanation
     │                               MLModel, FeatureVector
     │                               QualifiedTeam, WC2026Groups, WC2026Simulation
-    │                               TeamDetail, Player
+    │                               TeamDetail, Player, WorldCupWinnerPrediction
     ├── api.ts                    Typed fetch client:
     │                               predictMatch, simulateTournament, compareScenarios
     │                               mlPredict, mlModels, mlFeatures, mlExplanations
     │                               wc2026Teams, wc2026Groups, wc2026Simulate
-    │                               wc2026TeamDetail, wc2026Players
+    │                               wc2026TeamDetail, wc2026Players,
+    │                               wc2026WinnerPredictions
     ├── auth-context.tsx          JWT AuthContext: login, register, refresh, logout
     ├── queries.ts                React Query hooks (useQuery / useMutation per endpoint)
     └── utils.ts                  cn() class merger, number formatters
@@ -286,12 +296,13 @@ wcip-frontend/
 │ group_label      │   │ xg               │   │ injury_burden_diff   │
 │ pot              │   │ xag              │   │ coach_impact_diff    │
 │ host_nation BOOL │   │ minutes_played   │   │ squad_chemistry_diff │
-│ confirmed BOOL   │   │ ... (25 fields)  │   │ travel_distance_km   │
+│ confirmed BOOL   │   │ ratings/source   │   │ travel_distance_km   │
 │ qualification    │   └─────────────────┘   │ rest_days            │
 │   _path          │                         │ tournament_exp_diff  │
 └──────────────────┘   ┌─────────────────┐   │ starting_xi_strength │
 UQ(name, year)         │ coaches          │   │ bench_strength_diff  │
-                       │─────────────────│   └──────────────────────┘
+                       │─────────────────│   │ ... + v2 player cols │
+                       │                 │   └──────────────────────┘
 ┌──────────────────┐   │ id PK            │
 │ ml_models        │   │ name             │   ┌──────────────────────┐
 │──────────────────│   │ team_name        │   │ audit_logs           │
@@ -318,6 +329,17 @@ Additional ranking tables:
   `source_hash`, `team_count`, and `is_current`.
 - `fifa_ranking_entries` stores team rank, previous rank, points, previous
   points, rank movement, source team code, and raw source payload per snapshot.
+- `team_rankings` mirrors ranked records behind a provider-agnostic table name
+  for point-in-time feature and analyst queries.
+- `ranking_source_logs` records each ranking fetch/load attempt, source hash,
+  status, row counts, and errors.
+
+Additional player-rating tables:
+
+- `player_rating_imports` stores one legal CSV/API import batch with source,
+  version, status, and row counts.
+- `player_rating_records` stores historical player rating rows for each import
+  so model training and audits can reproduce old player-strength features.
 
 `teams.fifa_rank` is a current display cache only. Historical training,
 backtests, and tournament simulations should read ranking entries through the
@@ -428,6 +450,20 @@ POST /api/v1/world-cup/simulate   (or /api/v1/tournament/simulate for 2022)
 Response: {teams: [{team_name, confederation, champion_pct, ...stages...}]}
 ```
 
+## Winner Prediction Flow
+
+```
+GET /api/v1/world-cup/2026/winner-predictions?runs=5000&seed=12345
+  │
+  ├─ Reuse WC2026 qualified teams, groups, and bracket
+  ├─ Run MonteCarloEngine with deterministic seed for statistical stage odds
+  ├─ Build an ML-style strength score from Elo, FIFA rank, player ratings,
+  │   squad depth, availability, form, coach impact, and international experience
+  ├─ Normalize statistical and ML-style champion probabilities
+  └─ Return a ranked ensemble table with final/semi/quarter/group odds,
+      confidence interval, model comparison values, and explanation text
+```
+
 ---
 
 ## ETL Pipeline Flow
@@ -470,10 +506,16 @@ CLI / Admin API / Celery beat
   │   validate unique teams/ranks and minimum snapshot size
   │   INSERT/UPDATE fifa_ranking_snapshots by ranking_id
   │   INSERT fifa_ranking_entries for each ranked team
+  │   MIRROR rows into team_rankings for provider-neutral queries
+  │   WRITE ranking_source_logs for fetch/load traceability
   │   UPDATE teams.fifa_rank only for the current display cache
   │
-  └─ run_wc2026_seed()
-      Upsert teams, qualified_teams, placeholder players, and coaches
+  ├─ run_wc2026_seed()
+  │   Upsert teams, qualified_teams, placeholder players, and coaches
+  │
+  └─ run_player_rating_import()
+      Load licensed/manual CSV player ratings into players plus immutable
+      player_rating_imports and player_rating_records history
 ```
 
 ---
@@ -566,5 +608,5 @@ Vercel:
 | `FOOTBALL_DATA_API_KEY` | `""` | No | football-data.org free tier key |
 | `ML_MODELS_DIR` | `models` | No | Directory for trained model pickles |
 | `ML_MIN_TRAINING_SAMPLES` | `200` | No | Minimum rows before training |
-| `ML_FEATURE_VERSION` | `v1` | No | Feature set version tag |
+| `ML_FEATURE_VERSION` | `v2` | No | Feature set version tag |
 | `ETL_AUTO_RUN_ON_STARTUP` | `false` | No | Run ETL on every uvicorn start |
