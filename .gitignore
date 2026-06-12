@@ -1,2 +1,66 @@
-node_modules
-.venv
+# Dependencies and virtual environments
+node_modules/
+.venv/
+venv/
+env/
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+.envrc
+.npmrc
+.pypirc
+.netrc
+
+# Credential/key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*.token
+*.secret
+secrets.*
+credentials.*
+service-account*.json
+*.credentials.json
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend generated files
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local databases and generated ETL/data artifacts
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+wcip-backend/data/cache/*
+!wcip-backend/data/cache/.gitkeep
+wcip-backend/data/external/*
+!wcip-backend/data/external/.gitkeep
+
+# Local logs and OS/editor noise
+*.log
+.DS_Store
+.idea/
+.vscode/
