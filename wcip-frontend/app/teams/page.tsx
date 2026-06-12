@@ -40,7 +40,7 @@ export default function TeamsPage() {
       </header>
 
       <Card>
-        <CardHeader><span className="kicker">All 32 nations</span></CardHeader>
+        <CardHeader><span className="kicker">All 48 nations</span></CardHeader>
         <CardBody>
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-11" />)}</div>
