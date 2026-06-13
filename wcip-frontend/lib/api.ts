@@ -8,6 +8,7 @@ import type {
   HybridPrediction, MLModel, FeatureVector, QualifiedTeam,
   WC2026Groups, WC2026Simulation, TeamDetail, Player,
   WorldCupWinnerPrediction, DataFreshness, LatestEloSnapshot,
+  PredictionMode,
 } from "./types";
 
 function resolveApiBase() {
@@ -202,7 +203,19 @@ export const api = {
   refreshElo: () => request<unknown>("/admin/data/refresh-elo", { method: "POST", auth: true }),
   refreshFifaRankings: () =>
     request<unknown>("/admin/data/refresh-fifa-rankings", { method: "POST", auth: true }),
+  refreshPlayers: () => request<unknown>("/admin/data/refresh-players", { method: "POST", auth: true }),
   refreshAllData: () => request<unknown>("/admin/data/refresh-all", { method: "POST", auth: true }),
+  adminRetrainIfNeeded: (body?: {
+    material_ranking_changes?: number;
+    material_elo_changes?: number;
+    changed_player_records?: number;
+    changed_match_results?: number;
+    apply?: boolean;
+  }) => request<unknown>("/admin/ml/retrain-if-needed", {
+    method: "POST",
+    auth: true,
+    body: body ?? {},
+  }),
 
   // --- ML predictions (Phase 2) ---
   mlPredict: (body: {
@@ -215,6 +228,8 @@ export const api = {
   }) => request<HybridPrediction>("/ml/predict", { method: "POST", body }),
 
   mlModels: () => request<MLModel[]>("/ml/models"),
+  mlRetrain: (model: string = "all") =>
+    request<unknown>("/ml/retrain", { method: "POST", auth: true, body: { model } }),
 
   mlFeatures: (home: string, away: string, date?: string) => {
     const params = new URLSearchParams({ home_team: home, away_team: away });
@@ -248,9 +263,9 @@ export const api = {
   wc2026Simulate: (
     runs = 10000,
     overrides?: Record<string, Record<string, number>>,
-    options?: { seed?: number | null; deterministic?: boolean },
+    options?: { seed?: number | null; deterministic?: boolean; predictionMode?: PredictionMode },
   ) =>
-    request<WC2026Simulation>("/world-cup/simulate", {
+    request<WC2026Simulation>("/world_cup/2026/simulate", {
       method: "POST",
       body: {
         year: 2026,
@@ -258,6 +273,7 @@ export const api = {
         overrides,
         seed: options?.seed ?? null,
         deterministic: options?.deterministic ?? false,
+        prediction_mode: options?.predictionMode ?? "ensemble",
       },
     }),
 

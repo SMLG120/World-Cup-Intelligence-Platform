@@ -2,7 +2,15 @@
 
 import { AlertCircle, CheckCircle2, Database, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useDataFreshness, useRefreshAllData } from "@/lib/queries";
+import {
+  useAdminRetrainIfNeeded,
+  useDataFreshness,
+  useMLRetrain,
+  useRefreshAllData,
+  useRefreshElo,
+  useRefreshFifaRankings,
+  useRefreshPlayers,
+} from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -29,9 +37,24 @@ export function DataFreshnessStrip({ compact = false }: { compact?: boolean }) {
   const { user } = useAuth();
   const freshness = useDataFreshness();
   const refresh = useRefreshAllData();
+  const refreshElo = useRefreshElo();
+  const refreshFifa = useRefreshFifaRankings();
+  const refreshPlayers = useRefreshPlayers();
+  const retrainCheck = useAdminRetrainIfNeeded();
+  const retrain = useMLRetrain();
   const data = freshness.data;
   const state = sourceState(data?.source_status?.elo === "failed" ? "failed" : data?.source_status?.fifa);
   const isAdmin = user?.role === "admin";
+  const adminPending = refresh.isPending || refreshElo.isPending || refreshFifa.isPending
+    || refreshPlayers.isPending || retrainCheck.isPending || retrain.isPending;
+  const adminActions = [
+    { label: "Elo", run: () => refreshElo.mutate(), pending: refreshElo.isPending, title: "Refresh Elo ratings" },
+    { label: "FIFA", run: () => refreshFifa.mutate(), pending: refreshFifa.isPending, title: "Refresh FIFA rankings" },
+    { label: "Players", run: () => refreshPlayers.mutate(), pending: refreshPlayers.isPending, title: "Refresh player data" },
+    { label: "All", run: () => refresh.mutate(), pending: refresh.isPending, title: "Refresh all data" },
+    { label: "Check", run: () => retrainCheck.mutate({ apply: true }), pending: retrainCheck.isPending, title: "Check retraining thresholds" },
+    { label: "Retrain", run: () => retrain.mutate("all"), pending: retrain.isPending, title: "Trigger model retraining" },
+  ];
 
   return (
     <div className="rounded-md border border-line bg-elevated/50 px-3 py-3">
@@ -74,24 +97,30 @@ export function DataFreshnessStrip({ compact = false }: { compact?: boolean }) {
         )}
 
         {isAdmin && (
-          <Button
-            onClick={() => refresh.mutate()}
-            disabled={refresh.isPending}
-            variant="outline"
-            size="sm"
-            title="Refresh global data"
-            className="sm:ml-auto"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refresh.isPending ? "animate-spin" : ""}`} aria-hidden />
-            {refresh.isPending ? "Updating" : "Refresh Data"}
-          </Button>
+          <div className="flex flex-wrap gap-1 sm:ml-auto">
+            {adminActions.map((action) => (
+              <Button
+                key={action.label}
+                onClick={action.run}
+                disabled={adminPending}
+                variant="outline"
+                size="sm"
+                title={action.title}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${action.pending ? "animate-spin" : ""}`} aria-hidden />
+                {action.pending ? "..." : action.label}
+              </Button>
+            ))}
+          </div>
         )}
       </div>
-      {refresh.isSuccess && (
-        <div className="mt-2 text-xs text-pitch">Predictions refreshed.</div>
+      {(refresh.isSuccess || refreshElo.isSuccess || refreshFifa.isSuccess || refreshPlayers.isSuccess || retrainCheck.isSuccess || retrain.isSuccess) && (
+        <div className="mt-2 text-xs text-pitch">Data workflow updated.</div>
       )}
-      {refresh.isError && (
-        <div className="mt-2 text-xs text-signal">{(refresh.error as Error).message}</div>
+      {(refresh.isError || refreshElo.isError || refreshFifa.isError || refreshPlayers.isError || retrainCheck.isError || retrain.isError) && (
+        <div className="mt-2 text-xs text-signal">
+          {((refresh.error || refreshElo.error || refreshFifa.error || refreshPlayers.error || retrainCheck.error || retrain.error) as Error).message}
+        </div>
       )}
     </div>
   );

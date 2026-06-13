@@ -2,10 +2,47 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+def _evaluate_retrain(
+    *,
+    material_ranking_changes: int = 0,
+    material_elo_changes: int = 0,
+    changed_player_records: int = 0,
+    changed_match_results: int = 0,
+) -> None:
+    """Evaluate whether any ETL changes warrant model recalibration, and mark models if so."""
+    if not any([material_ranking_changes, material_elo_changes, changed_player_records, changed_match_results]):
+        return
+    try:
+        from ml.retrain_if_needed import evaluate_retraining_need
+
+        report = evaluate_retraining_need(
+            material_ranking_changes=material_ranking_changes,
+            material_elo_changes=material_elo_changes,
+            changed_player_records=changed_player_records,
+            changed_match_results=changed_match_results,
+            apply=True,
+        )
+        if report.get("action") != "none":
+            logger.info(
+                "Retraining evaluation: action=%s models_marked=%s reasons=%s",
+                report.get("action"),
+                report.get("models_marked"),
+                report.get("reasons"),
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception("evaluate_retraining_need failed — skipping")
+
+
+def _inner(result: dict[str, Any]) -> dict[str, Any]:
+    """Extract the inner ETL result dict from a _run_refresh wrapper."""
+    return result.get("result") or {}
 
 
 @celery_app.task(name="etl.refresh_world_cup_results", bind=True, max_retries=3)
@@ -17,6 +54,7 @@ def refresh_world_cup_results(self):
         result = _refresh()
         if result.get("status") == "failed":
             raise RuntimeError(result.get("detail") or "match result refresh failed")
+        _evaluate_retrain(changed_match_results=int(_inner(result).get("inserted") or 0))
         return result
     except Exception as exc:
         logger.error("ETL daily results failed: %s", exc)
@@ -32,6 +70,9 @@ def refresh_elo_ratings(self):
         result = _refresh()
         if result.get("status") == "failed":
             raise RuntimeError(result.get("detail") or "Elo refresh failed")
+        inner = _inner(result)
+        material_elo = int(inner.get("entries_inserted") or 0) + int(inner.get("entries_replaced") or 0)
+        _evaluate_retrain(material_elo_changes=material_elo)
         return result
     except Exception as exc:
         logger.error("ETL Elo update failed: %s", exc)
@@ -47,6 +88,8 @@ def refresh_fifa_rankings(self):
         result = _refresh()
         if result.get("status") == "failed":
             raise RuntimeError(result.get("detail") or "FIFA ranking refresh failed")
+        material_ranking = int(_inner(result).get("material_changes") or 0)
+        _evaluate_retrain(material_ranking_changes=material_ranking)
         return result
     except Exception as exc:
         logger.error("ETL FIFA ranking update failed: %s", exc)
@@ -62,6 +105,10 @@ def refresh_player_availability(self):
         result = _refresh()
         if result.get("status") == "failed":
             raise RuntimeError(result.get("detail") or "player availability refresh failed")
+        inner = _inner(result)
+        # Only count rows when the import actually ran (not "skipped" due to missing CSV)
+        player_records = int(inner.get("valid_rows") or 0) if inner.get("status") not in ("skipped", None) else 0
+        _evaluate_retrain(changed_player_records=player_records)
         return result
     except Exception as exc:
         logger.error("ETL player availability refresh failed: %s", exc)
@@ -73,6 +120,18 @@ def refresh_prediction_cache():
     from app.services.data_refresh_service import refresh_prediction_cache as _refresh
 
     return _refresh()
+
+
+@celery_app.task(name="etl.retrain_if_needed")
+def retrain_if_needed():
+    """Scheduled no-op threshold check for model freshness monitoring."""
+    try:
+        from ml.retrain_if_needed import evaluate_retraining_need
+
+        return evaluate_retraining_need(apply=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Scheduled retrain_if_needed failed")
+        return {"status": "failed", "detail": str(exc)}
 
 
 @celery_app.task(name="etl.full_pipeline", bind=True, max_retries=2)

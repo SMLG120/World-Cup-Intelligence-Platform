@@ -10,6 +10,7 @@ from app.services.data_refresh_service import (
     refresh_all_data,
     refresh_elo_ratings,
     refresh_fifa_rankings,
+    refresh_player_availability,
 )
 
 router = APIRouter(prefix="/admin/data", tags=["admin-data"])
@@ -23,6 +24,11 @@ def admin_refresh_elo(_user: AdminUser) -> dict[str, Any]:
 @router.post("/refresh-fifa-rankings")
 def admin_refresh_fifa_rankings(_user: AdminUser) -> dict[str, Any]:
     return refresh_fifa_rankings()
+
+
+@router.post("/refresh-players")
+def admin_refresh_players(_user: AdminUser) -> dict[str, Any]:
+    return refresh_player_availability()
 
 
 @router.post("/refresh-all")

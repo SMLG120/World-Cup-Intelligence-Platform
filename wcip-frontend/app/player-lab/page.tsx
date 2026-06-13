@@ -53,16 +53,25 @@ function PlayerRow({ player, onToggleInjury, onToggleSuspend }: {
   onToggleInjury: (id: number, val: boolean) => void;
   onToggleSuspend: (id: number, val: boolean) => void;
 }) {
+  const rating = player.player_rating ?? player.ea_fc_rating;
   return (
     <tr className="border-b border-white/5 hover:bg-white/3">
       <td className="py-2 pr-3">
         <div className="text-sm text-white">{player.name}</div>
-        <div className="text-xs text-gray-500">{player.club || "—"}</div>
+        <div className="text-xs text-gray-500">
+          {player.club || "—"}
+          {player.player_rating_source && (
+            <span className="ml-1 text-emerald-400/80">{player.player_rating_source}</span>
+          )}
+        </div>
       </td>
       <td className="text-xs text-gray-400 pr-3">{player.position}</td>
       <td className="text-xs text-gray-400 pr-3">{player.age || "—"}</td>
+      <td className="text-xs text-emerald-300 pr-3 font-mono">
+        {rating != null ? rating.toFixed(1) : "—"}
+      </td>
+      <td className="text-xs text-gray-400 pr-3">{player.international_caps}</td>
       <td className="text-xs text-gray-400 pr-3">{player.goals.toFixed(0)}</td>
-      <td className="text-xs text-gray-400 pr-3">{player.xg.toFixed(1)}</td>
       <td className="pr-3">
         <button
           onClick={() => onToggleInjury(player.id, !player.injured)}
@@ -252,8 +261,9 @@ export default function PlayerLabPage() {
                             <th className="pb-1 pr-3">Player</th>
                             <th className="pr-3">Pos</th>
                             <th className="pr-3">Age</th>
+                            <th className="pr-3">Rating</th>
+                            <th className="pr-3">Caps</th>
                             <th className="pr-3">G</th>
-                            <th className="pr-3">xG</th>
                             <th className="pr-3">Status</th>
                             <th>Susp</th>
                           </tr>

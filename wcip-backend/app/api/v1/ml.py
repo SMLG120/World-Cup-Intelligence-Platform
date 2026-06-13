@@ -12,6 +12,7 @@ from app.core.deps import AdminUser, CurrentUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ml", tags=["ml"])
+admin_router = APIRouter(prefix="/admin/ml", tags=["admin-ml"])
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +45,14 @@ class MLTrainRequest(BaseModel):
 
 class MLRetrainRequest(BaseModel):
     model: str = "all"
+
+
+class MLRetrainCheckRequest(BaseModel):
+    material_ranking_changes: int = Field(0, ge=0)
+    material_elo_changes: int = Field(0, ge=0)
+    changed_player_records: int = Field(0, ge=0)
+    changed_match_results: int = Field(0, ge=0)
+    apply: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +255,21 @@ def _do_etl() -> None:
         run_full_pipeline()
     except Exception as e:
         logger.error("ETL pipeline failed: %s", e)
+
+
+@admin_router.post("/retrain-if-needed")
+def admin_retrain_if_needed(req: MLRetrainCheckRequest, _user: AdminUser) -> Dict[str, Any]:
+    """Evaluate data-change thresholds and mark active models when needed."""
+    try:
+        from ml.retrain_if_needed import evaluate_retraining_need
+
+        return evaluate_retraining_need(
+            material_ranking_changes=req.material_ranking_changes,
+            material_elo_changes=req.material_elo_changes,
+            changed_player_records=req.changed_player_records,
+            changed_match_results=req.changed_match_results,
+            apply=req.apply,
+        )
+    except Exception as e:
+        logger.exception("Retraining threshold evaluation failed: %s", e)
+        raise HTTPException(500, f"Retraining threshold evaluation failed: {e}")

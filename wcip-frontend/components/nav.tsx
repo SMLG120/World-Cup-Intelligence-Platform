@@ -9,10 +9,10 @@ import { AnimatePresence, motion } from "framer-motion";
 
 const LINKS = [
   { href: "/world-cup", label: "WC 2026", group: "main" },
+  { href: "/wc2026/bracket", label: "Bracket", group: "main" },
   { href: "/predict", label: "Predict", group: "main" },
-  { href: "/compare", label: "Compare", group: "main" },
-  { href: "/simulate", label: "Simulate", group: "main" },
   { href: "/scenarios", label: "Scenarios", group: "main" },
+  { href: "/compare", label: "Compare", group: "main" },
   { href: "/explain", label: "Explain", group: "analysis" },
   { href: "/models", label: "Models", group: "analysis" },
   { href: "/player-lab", label: "Lab", group: "analysis" },

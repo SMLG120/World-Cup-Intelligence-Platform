@@ -98,11 +98,28 @@ def run_wc2026_seed(source_path: str | Path | None = None) -> dict:
 def run_player_rating_import(source_path: str | Path | None = None) -> dict:
     """Import legal player ratings from CSV when a source file is available."""
     from etl.player_ratings import import_player_ratings_csv
+    from etl.players.fifa_squad_pdf import DEFAULT_CSV_PATH, FIFA_SQUAD_PDF_URL, SOURCE_VERSION
 
-    path = source_path or Path(__file__).parents[1] / "data" / "external" / "ea_player_ratings.csv"
+    manual_path = Path(__file__).parents[1] / "data" / "external" / "ea_player_ratings.csv"
+    if source_path:
+        path = Path(source_path)
+    elif DEFAULT_CSV_PATH.exists():
+        path = DEFAULT_CSV_PATH
+    else:
+        path = manual_path
+
     if not Path(path).exists():
         logger.info("Player rating CSV not found at %s; skipping import", path)
         return {"status": "skipped", "reason": "source_file_not_found", "source_file": str(path)}
+
+    if Path(path).name == DEFAULT_CSV_PATH.name:
+        return import_player_ratings_csv(
+            path,
+            source_name="fifa_wc2026_squad_pdf",
+            source_version=SOURCE_VERSION,
+            source_url=FIFA_SQUAD_PDF_URL,
+            notes="Official FIFA squad-list facts with conservative fifa_roster_proxy_v1 ratings.",
+        )
     return import_player_ratings_csv(path)
 
 

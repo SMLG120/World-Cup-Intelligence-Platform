@@ -104,6 +104,8 @@ def test_data_freshness_endpoint(client):
 def test_admin_refresh_requires_admin(client, auth_headers, monkeypatch):
     user_response = client.post("/api/v1/admin/data/refresh-all", headers=auth_headers)
     assert user_response.status_code == 403
+    retrain_user_response = client.post("/api/v1/admin/ml/retrain-if-needed", headers=auth_headers, json={})
+    assert retrain_user_response.status_code == 403
 
     monkeypatch.setattr("app.api.v1.admin_data.refresh_all_data", lambda: {"status": "ok"})
     with SessionLocal() as db:
@@ -114,3 +116,11 @@ def test_admin_refresh_requires_admin(client, auth_headers, monkeypatch):
     admin_response = client.post("/api/v1/admin/data/refresh-all", headers=auth_headers)
     assert admin_response.status_code == 200
     assert admin_response.json()["status"] == "ok"
+
+    retrain_admin_response = client.post(
+        "/api/v1/admin/ml/retrain-if-needed",
+        headers=auth_headers,
+        json={"material_elo_changes": 10, "apply": True},
+    )
+    assert retrain_admin_response.status_code == 200
+    assert retrain_admin_response.json()["action"] == "recalibration"

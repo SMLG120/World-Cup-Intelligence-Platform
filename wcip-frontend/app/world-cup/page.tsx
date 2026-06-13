@@ -1,18 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList, Legend,
 } from "recharts";
 import { useWC2026Teams, useWC2026Groups, useWC2026Simulate } from "@/lib/queries";
-import type { TeamProbability, QualifiedTeam } from "@/lib/types";
+import type {
+  PredictionMode,
+  TeamProbability,
+  QualifiedTeam,
+  WC2026GroupRow,
+  WC2026KnockoutMatch,
+  WC2026KnockoutRound,
+  WC2026Simulation,
+} from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
+import { SaveSimulationButton } from "@/components/save-simulation-button";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 import { pct, ordinal } from "@/lib/utils";
 
 // ── Colour palette per confederation ────────────────────────────────────────
@@ -162,7 +173,19 @@ function TeamPill({ team }: { team: QualifiedTeam }) {
           </span>
         )}
       </div>
-      <span className="text-[10px] text-muted shrink-0 ml-2">{team.confederation}</span>
+      <div className="flex items-center gap-3 shrink-0 ml-2">
+        {team.elo_rating != null && (
+          <span className="text-[10px] font-mono text-pitch" title="Elo rating">
+            {Math.round(team.elo_rating)}
+          </span>
+        )}
+        {team.fifa_rank != null && (
+          <span className="text-[10px] text-muted" title={`FIFA rank #${team.fifa_rank}`}>
+            #{team.fifa_rank}
+          </span>
+        )}
+        <span className="text-[10px] text-muted">{team.confederation}</span>
+      </div>
     </div>
   );
 }
@@ -190,15 +213,278 @@ function LikelyFinal({ teams }: { teams: TeamProbability[] }) {
   );
 }
 
+// ── Group simulation card ─────────────────────────────────────────────────────
+function GroupSimCard({
+  label,
+  teamNames,
+  sim,
+}: {
+  label: string;
+  teamNames: string[];
+  sim: WC2026Simulation;
+}) {
+  const probMap = new Map(sim.teams.map((t) => [t.team, t]));
+  const sorted = [...teamNames].sort((a, b) => {
+    const pa = probMap.get(a)?.round_of_16 ?? 0;
+    const pb = probMap.get(b)?.round_of_16 ?? 0;
+    return pb - pa;
+  });
+
+  return (
+    <Card>
+      <CardHeader className="py-3 flex items-center justify-between">
+        <span className="kicker">Group {label}</span>
+        <span className="text-[10px] text-muted">R16 %</span>
+      </CardHeader>
+      <CardBody className="py-2 space-y-1.5">
+        {sorted.map((name, i) => {
+          const p = probMap.get(name);
+          const pct_val = p ? Math.round(p.round_of_16 * 100) : null;
+          const barW = p ? p.round_of_16 * 100 : 0;
+          return (
+            <div key={name} className="space-y-0.5">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={`text-[10px] font-mono w-4 shrink-0 ${i < 2 ? "text-pitch" : "text-muted"}`}>
+                    {i + 1}
+                  </span>
+                  <span className={`truncate ${i < 2 ? "text-fg" : "text-muted"}`}>{name}</span>
+                </div>
+                <span className={`tnum shrink-0 ml-2 text-[10px] ${i < 2 ? "text-pitch" : "text-muted"}`}>
+                  {pct_val != null ? `${pct_val}%` : "—"}
+                </span>
+              </div>
+              <div className="h-0.5 w-full bg-elevated rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${i < 2 ? "bg-pitch" : "bg-muted/40"}`}
+                  style={{ width: `${barW}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </CardBody>
+    </Card>
+  );
+}
+
+function QualificationBadge({ type }: { type: WC2026GroupRow["qualification_type"] }) {
+  if (type === "automatic") {
+    return <span className="text-[9px] text-pitch border border-pitch/30 rounded px-1">Q</span>;
+  }
+  if (type === "best_third") {
+    return <span className="text-[9px] text-[hsl(45_95%_58%)] border border-[hsl(45_95%_58%/0.35)] rounded px-1">3rd</span>;
+  }
+  return <span className="text-[9px] text-muted border border-line rounded px-1">out</span>;
+}
+
+function GroupTableCard({ label, rows }: { label: string; rows: WC2026GroupRow[] }) {
+  return (
+    <Card>
+      <CardHeader className="py-3 flex items-center justify-between">
+        <span className="kicker">Group {label}</span>
+        <span className="text-[10px] text-muted">simulated table</span>
+      </CardHeader>
+      <CardBody className="p-0 overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] text-muted border-b border-line/50">
+              <th className="py-2 pl-3 text-left font-normal">Team</th>
+              <th className="py-2 text-right font-normal">P</th>
+              <th className="py-2 text-right font-normal">GD</th>
+              <th className="py-2 text-right font-normal">Pts</th>
+              <th className="py-2 pr-3 text-right font-normal">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.team} className="border-b border-line/40 last:border-0">
+                <td className="py-2 pl-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="tnum text-[10px] text-muted w-3">{row.rank}</span>
+                    <span className={row.qualified ? "text-fg font-medium truncate" : "text-muted truncate"}>
+                      {row.team}
+                    </span>
+                  </div>
+                </td>
+                <td className="py-2 text-right tnum text-muted">{row.played}</td>
+                <td className="py-2 text-right tnum text-muted">{row.goal_difference > 0 ? "+" : ""}{row.goal_difference}</td>
+                <td className="py-2 text-right tnum text-fg font-semibold">{row.points}</td>
+                <td className="py-2 pr-3 text-right"><QualificationBadge type={row.qualification_type} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardBody>
+    </Card>
+  );
+}
+
+// ── Group tables grid ─────────────────────────────────────────────────────────
+function GroupTablesGrid({
+  groups,
+  sim,
+}: {
+  groups: Record<string, string[]>;
+  sim: WC2026Simulation;
+}) {
+  return (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {Object.entries(groups)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([label, teamNames]) => {
+          const rows = sim.group_tables?.[label];
+          return rows
+            ? <GroupTableCard key={label} label={label} rows={rows} />
+            : <GroupSimCard key={label} label={label} teamNames={teamNames} sim={sim} />;
+        })}
+    </div>
+  );
+}
+
+function BestThirdTable({ rows }: { rows?: WC2026GroupRow[] }) {
+  if (!rows?.length) return null;
+  return (
+    <Card>
+      <CardHeader className="py-3">
+        <span className="kicker">Best third-place teams</span>
+      </CardHeader>
+      <CardBody className="overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[10px] text-muted border-b border-line">
+              <th className="px-4 py-2 text-left font-normal">#</th>
+              <th className="px-4 py-2 text-left font-normal">Team</th>
+              <th className="px-4 py-2 text-right font-normal">Group</th>
+              <th className="px-4 py-2 text-right font-normal">Pts</th>
+              <th className="px-4 py-2 text-right font-normal">GD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`${row.group}-${row.team}`} className="border-b border-line/50 last:border-0">
+                <td className="px-4 py-2 tnum text-muted">{row.rank}</td>
+                <td className="px-4 py-2 text-fg font-medium">{row.team}</td>
+                <td className="px-4 py-2 text-right tnum text-muted">{row.group}</td>
+                <td className="px-4 py-2 text-right tnum text-fg">{row.points}</td>
+                <td className="px-4 py-2 text-right tnum text-muted">{row.goal_difference > 0 ? "+" : ""}{row.goal_difference}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardBody>
+    </Card>
+  );
+}
+
+function BracketMatchCard({ match }: { match: WC2026KnockoutMatch }) {
+  const winnerProb = match.winner_probability != null ? pct(match.winner_probability) : "n/a";
+  const championProb = match.champion_probability != null ? pct(match.champion_probability) : null;
+  const modeLabel = (match.effective_prediction_mode ?? match.prediction_mode ?? "ensemble").replace("_", " ");
+  const row = (team: string, code: string | undefined, goals: number) => (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-[10px] font-mono text-muted w-8 shrink-0">{code ?? team.slice(0, 3).toUpperCase()}</span>
+        <span className={match.winner === team ? "font-semibold text-fg truncate" : "text-muted truncate"}>
+          {team}
+        </span>
+      </div>
+      <span className={`tnum shrink-0 ${match.winner === team ? "text-pitch font-semibold" : "text-fg"}`}>
+        {goals}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="rounded-md border border-line bg-elevated/50 p-3 text-xs space-y-2">
+      {row(match.home, match.home_code, match.home_goals)}
+      {row(match.away, match.away_code, match.away_goals)}
+      <div className="grid grid-cols-2 gap-2 border-t border-line/50 pt-2 text-[10px] text-muted">
+        <span>{match.match_id}</span>
+        <span className="text-right capitalize">{match.decided_by.replace("_", " ")}</span>
+        <span>Winner prob</span>
+        <span className="text-right text-pitch tnum">{winnerProb}</span>
+        <span>Model</span>
+        <span className="text-right uppercase">{modeLabel}</span>
+        {championProb && (
+          <>
+            <span>Champion odds</span>
+            <span className="text-right tnum">{championProb}</span>
+          </>
+        )}
+      </div>
+      {match.advancement_reason && (
+        <p className="text-[10px] leading-snug text-muted">{match.advancement_reason}</p>
+      )}
+    </div>
+  );
+}
+
+function KnockoutBracket({ rounds }: { rounds?: WC2026KnockoutRound[] }) {
+  const visibleRounds = (rounds ?? []).filter((round) => round.matches.length > 0);
+  if (!visibleRounds.length) return null;
+  return (
+    <div className="overflow-x-auto pb-2">
+      <div className="grid gap-4 min-w-[1260px]" style={{ gridTemplateColumns: `repeat(${visibleRounds.length}, minmax(190px, 1fr))` }}>
+        {visibleRounds.map((round) => (
+          <div key={round.round} className="space-y-2">
+            <div className="kicker text-center">{round.round}</div>
+            {round.matches
+              .slice()
+              .sort((a, b) => a.order - b.order)
+              .map((match) => <BracketMatchCard key={match.match_id} match={match} />)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Run count selector ────────────────────────────────────────────────────────
 const RUN_OPTIONS: [number, string][] = [
+  [1, "Single"],
   [1000, "1K"], [5000, "5K"], [10000, "10K"], [50000, "50K"],
 ];
+
+const MODE_OPTIONS: { value: PredictionMode; label: string }[] = [
+  { value: "ensemble", label: "Ensemble" },
+  { value: "statistical", label: "Stat" },
+  { value: "ml", label: "ML" },
+];
+
+function PredictionModeControl({
+  value,
+  onChange,
+}: {
+  value: PredictionMode;
+  onChange: (mode: PredictionMode) => void;
+}) {
+  return (
+    <div className="flex gap-1" aria-label="Prediction mode">
+      {MODE_OPTIONS.map((mode) => (
+        <button
+          key={mode.value}
+          onClick={() => onChange(mode.value)}
+          className={`px-3 h-9 rounded-md border text-xs uppercase tracking-[0.12em] transition-colors ${
+            value === mode.value
+              ? "border-pitch text-pitch bg-pitch/10"
+              : "border-line text-muted hover:text-fg"
+          }`}
+          title={`Use ${mode.label} predictions for displayed match probabilities`}
+        >
+          {mode.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function WorldCupPage() {
   const [tab, setTab] = useState("overview");
   const [simRuns, setSimRuns] = useState(10000);
+  const [predictionMode, setPredictionMode] = useState<PredictionMode>("ensemble");
+  const [teamSort, setTeamSort] = useState<"elo" | "name" | "fifa">("elo");
   const [confFilter, setConfFilter] = useState("all");
 
   const { data: teams, isLoading: teamsLoading } = useWC2026Teams();
@@ -210,7 +496,7 @@ export default function WorldCupPage() {
   const simResult = sim.data;
 
   function runSim() {
-    sim.mutate({ runs: simRuns });
+    sim.mutate({ runs: simRuns, predictionMode });
   }
 
   return (
@@ -240,6 +526,7 @@ export default function WorldCupPage() {
 
         {/* Sim controls */}
         <div className="flex items-center gap-2 flex-wrap">
+          <PredictionModeControl value={predictionMode} onChange={setPredictionMode} />
           <div className="flex gap-1">
             {RUN_OPTIONS.map(([v, l]) => (
               <button
@@ -258,8 +545,13 @@ export default function WorldCupPage() {
           <Button onClick={runSim} disabled={sim.isPending} size="md">
             {sim.isPending ? "Simulating…" : "Run simulation"}
           </Button>
+          <Link href="/wc2026/bracket">
+            <Button variant="outline" size="md">Full bracket</Button>
+          </Link>
         </div>
       </motion.header>
+
+      <DataFreshnessStrip />
 
       <WinnerPredictionsSection />
 
@@ -269,12 +561,16 @@ export default function WorldCupPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="teams">Teams ({(teams ?? []).length})</TabsTrigger>
           <TabsTrigger value="groups">Groups</TabsTrigger>
+          <TabsTrigger value="bracket">Bracket</TabsTrigger>
         </TabsList>
 
         {/* ── Overview tab ── */}
         <TabsContent value="overview" className="mt-6 space-y-6">
           {sim.isError && (
-            <p className="text-signal text-sm">{(sim.error as Error).message}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm">
+              <p className="text-signal">{(sim.error as Error).message}</p>
+              <Button variant="outline" size="sm" onClick={runSim}>Retry</Button>
+            </div>
           )}
 
           {!simResult && !sim.isPending && (
@@ -304,6 +600,49 @@ export default function WorldCupPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-6"
               >
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+                  <span>
+                    <span className="tnum text-fg font-semibold">{simResult.runs.toLocaleString()}</span> run{simResult.runs === 1 ? "" : "s"}
+                  </span>
+                  <span>
+                    Mode <span className="text-fg font-semibold uppercase">{simResult.prediction_mode ?? predictionMode}</span>
+                  </span>
+                  {simResult.seed !== undefined && simResult.seed !== null && (
+                    <span>
+                      Seed <span className="tnum text-fg font-semibold">{simResult.seed}</span>
+                    </span>
+                  )}
+                  {simResult.champion && (
+                    <span>
+                      Champion <span className="text-pitch font-semibold">{simResult.champion}</span>
+                    </span>
+                  )}
+                  <div className="flex gap-2 sm:ml-auto">
+                    <SaveSimulationButton
+                      defaultName={`WC 2026 simulation (${simResult.runs.toLocaleString()} runs)`}
+                      simulationType="wc2026"
+                      edition="2026"
+                      runs={simResult.runs}
+                      seed={simResult.seed}
+                      deterministic={simResult.deterministic}
+                      tournamentResult={simResult}
+                      championProbabilities={simResult.teams}
+                      bracketOutput={{
+                        group_tables: simResult.group_tables,
+                        group_stage_matches: simResult.group_stage_matches,
+                        qualified_teams: simResult.qualified_teams,
+                        best_third_place: simResult.best_third_place,
+                        knockout_bracket: simResult.knockout_bracket,
+                        matches: simResult.matches,
+                        prediction_mode: simResult.prediction_mode,
+                      }}
+                    />
+                    <Link href="/saved">
+                      <Button variant="ghost" size="sm">Saved</Button>
+                    </Link>
+                  </div>
+                </div>
+
                 {/* Most likely final */}
                 <Card>
                   <CardBody className="py-2">
@@ -374,6 +713,14 @@ export default function WorldCupPage() {
                     </table>
                   </CardBody>
                 </Card>
+
+                {/* Group stage qualification probabilities */}
+                {simResult.groups && (
+                  <div>
+                    <h2 className="kicker mb-4">Group stage</h2>
+                    <GroupTablesGrid groups={simResult.groups} sim={simResult} />
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -381,27 +728,43 @@ export default function WorldCupPage() {
 
         {/* ── Teams tab ── */}
         <TabsContent value="teams" className="mt-6 space-y-4">
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => setConfFilter("all")}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                confFilter === "all" ? "border-pitch text-pitch bg-pitch/10" : "border-line text-muted hover:text-fg"
-              }`}
-            >
-              All ({(teams ?? []).length})
-            </button>
-            {confederation.map((c) => (
+          <div className="flex flex-wrap items-center gap-2 justify-between">
+            <div className="flex gap-2 flex-wrap">
               <button
-                key={c}
-                onClick={() => setConfFilter(c)}
-                style={confFilter === c ? { borderColor: CONF_COLOURS[c], color: CONF_COLOURS[c] } : {}}
+                onClick={() => setConfFilter("all")}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  confFilter === c ? "bg-elevated" : "border-line text-muted hover:text-fg"
+                  confFilter === "all" ? "border-pitch text-pitch bg-pitch/10" : "border-line text-muted hover:text-fg"
                 }`}
               >
-                {c} ({(teams ?? []).filter((t) => t.confederation === c).length})
+                All ({(teams ?? []).length})
               </button>
-            ))}
+              {confederation.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setConfFilter(c)}
+                  style={confFilter === c ? { borderColor: CONF_COLOURS[c], color: CONF_COLOURS[c] } : {}}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    confFilter === c ? "bg-elevated" : "border-line text-muted hover:text-fg"
+                  }`}
+                >
+                  {c} ({(teams ?? []).filter((t) => t.confederation === c).length})
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 text-xs text-muted">
+              <span>Sort:</span>
+              {(["elo", "fifa", "name"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setTeamSort(s)}
+                  className={`px-2 py-0.5 rounded border text-[10px] transition-colors ${
+                    teamSort === s ? "border-pitch text-pitch" : "border-line hover:text-fg"
+                  }`}
+                >
+                  {s === "elo" ? "Elo ↓" : s === "fifa" ? "FIFA ↑" : "Name"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {teamsLoading ? (
@@ -410,9 +773,26 @@ export default function WorldCupPage() {
             </div>
           ) : (
             <Card>
-              <CardBody className="p-3">
-                <div className="grid sm:grid-cols-2 gap-0.5">
-                  {filtered.map((t) => <TeamPill key={t.team_name} team={t} />)}
+              <CardBody className="p-0">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-line/50 text-[10px] text-muted">
+                  <span className="w-8">Code</span>
+                  <span className="flex-1 ml-2">Team</span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-pitch font-medium">Elo</span>
+                    <span>FIFA</span>
+                    <span>Conf</span>
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2">
+                  {[...(filtered ?? [])]
+                    .sort((a, b) =>
+                      teamSort === "elo"
+                        ? (b.elo_rating ?? 0) - (a.elo_rating ?? 0)
+                        : teamSort === "fifa"
+                        ? (a.fifa_rank ?? 999) - (b.fifa_rank ?? 999)
+                        : a.team_name.localeCompare(b.team_name)
+                    )
+                    .map((t) => <TeamPill key={t.team_name} team={t} />)}
                 </div>
               </CardBody>
             </Card>
@@ -420,13 +800,31 @@ export default function WorldCupPage() {
         </TabsContent>
 
         {/* ── Groups tab ── */}
-        <TabsContent value="groups" className="mt-6">
+        <TabsContent value="groups" className="mt-6 space-y-6">
           {groupsLoading ? (
-            <div className="grid sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-44" />)}
             </div>
+          ) : simResult?.groups ? (
+            <>
+              {!groups?.draw_complete && (
+                <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-[hsl(45_95%_58%/0.3)] bg-[hsl(45_95%_58%/0.06)] text-sm text-[hsl(45_95%_58%)]">
+                  <span className="shrink-0 mt-0.5">⚠</span>
+                  <span>
+                    Official draw pending — showing <strong>provisional Elo-seeded groups</strong> used in the simulation.
+                    Probabilities reflect these provisional assignments.
+                  </span>
+                </div>
+              )}
+              <GroupTablesGrid groups={simResult.groups} sim={simResult} />
+              <BestThirdTable rows={simResult.best_third_place} />
+              <p className="text-[10px] text-muted text-center">
+                Based on {simResult.runs.toLocaleString()} simulations · Top 2 per group advance ·
+                {groups?.draw_complete ? " Official draw" : " Provisional Elo seeding"}
+              </p>
+            </>
           ) : groups?.draw_complete ? (
-            <div className="grid sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {Object.entries(groups.groups).map(([label, groupTeams]) => (
                 <Card key={label}>
                   <CardHeader className="py-3">
@@ -447,10 +845,46 @@ export default function WorldCupPage() {
               <div className="text-5xl mb-4">🎲</div>
               <h2 className="display text-2xl mb-2">Group draw pending</h2>
               <p className="text-muted max-w-md mx-auto">
-                The official FIFA group draw hasn&apos;t taken place yet. Provisional Elo-seeded
-                groups are used for simulations until the draw is confirmed.
+                The official FIFA group draw hasn&apos;t taken place yet. Run a simulation to see
+                provisional Elo-seeded group qualification probabilities.
               </p>
             </div>
+          )}
+        </TabsContent>
+
+        {/* ── Bracket tab ── */}
+        <TabsContent value="bracket" className="mt-6 space-y-6">
+          {simResult?.knockout_bracket ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardBody className="py-5">
+                    <p className="kicker mb-1">Champion</p>
+                    <div className="display text-3xl">{simResult.champion ?? "TBD"}</div>
+                  </CardBody>
+                </Card>
+                <Card>
+                  <CardBody className="py-5">
+                    <p className="kicker mb-1">Runner-up</p>
+                    <div className="display text-3xl">{simResult.runner_up ?? "TBD"}</div>
+                  </CardBody>
+                </Card>
+                <Card>
+                  <CardBody className="py-5">
+                    <p className="kicker mb-1">Third place</p>
+                    <div className="display text-3xl">{simResult.third_place ?? "TBD"}</div>
+                  </CardBody>
+                </Card>
+              </div>
+              <KnockoutBracket rounds={simResult.knockout_bracket} />
+            </>
+          ) : (
+            <Card>
+              <CardBody className="py-16 text-center">
+                <h2 className="display text-2xl mb-2">No bracket yet</h2>
+                <p className="text-muted">Run a simulation to generate a full knockout path.</p>
+              </CardBody>
+            </Card>
           )}
         </TabsContent>
       </Tabs>

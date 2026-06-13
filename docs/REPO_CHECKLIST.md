@@ -15,12 +15,14 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `etl/extract/fifa_rankings.py` — official FIFA ranking snapshot fetch + validation
 - ✅ `etl/fifa_rankings/` — dedicated FIFA ranking ETL package around the canonical official snapshot loader
 - ✅ `etl/players/` — legal CSV player import wrapper + generated profile text
+- ✅ `etl/players/fifa_squad_pdf.py` — official FIFA squad PDF to player CSV converter with conservative proxy ratings
 - ✅ `etl/load/ranking_loader.py` — historical ranking snapshot loader
 - ✅ `etl/monitoring/ranking_monitor.py` — ranking change detection + retraining trigger
 - ✅ `etl/transform/normalize.py` — canonical name normalization (60+ variant spellings)
 - ✅ `etl/validation/schema.py` — ValidatedMatch dataclass, business-rule checks
 - ✅ `etl/load/db_loader.py` — idempotent upsert loaders (batch 500, in-run dedup)
 - ✅ `etl/schedulers/celery_tasks.py` — scheduled Elo, FIFA, results, player availability, and cache refresh tasks
+- ✅ `etl.retrain_if_needed` — scheduled retraining threshold monitor
 
 ### Database Tables (19 total)
 - ✅ `users` — accounts, roles, refresh tokens
@@ -57,7 +59,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ Ranking source logging for fetch/load traceability
 - ✅ Elo source logging for fetch/load traceability
 - ✅ Legal CSV player-rating import with validation and versioning
+- ✅ Official FIFA squad-list CSV generation for Player Lab and player-strength ML features
 - ✅ Generated player profiles from supported fields only; incomplete rows labelled
+- ✅ Player-derived feature validator for sparse squads, duplicates, rating ranges, position mapping, and NaN/inf safety
 - 📋 Historical FIFA ranking backfill before first snapshot ingestion date
 - 📋 Broader data versioning for non-ranking external sources
 - 📋 StatsBomb Open Data integration (xG, shot-level data)
@@ -89,6 +93,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `ml/predict.py` — `lru_cache` model loading, per-model inference
 - ✅ `ml/retrain.py` — incremental retrain + cache invalidation
 - ✅ `ml/validate_features.py` — feature order/shape/NaN/inf validation report
+- ✅ `ml/validate_player_features.py` — player-data and player-feature validation report
 - ✅ `ml/retrain_if_needed.py` — data-change threshold workflow for recalibration decisions
 - ✅ Model versioning (`v{YYYYMMDD}`) + `is_active` flag in registry
 - ✅ Ensemble weight auto-update on each retrain (inverse log-loss, normalised)
@@ -140,8 +145,16 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `get_qualified_teams_from_db()` — DB-first with stale-data fallback to official seed
 - ✅ `build_2026_groups_from_db()` — official groups when draw is complete
 - ✅ `_provisional_groups_by_elo()` — serpentine Elo-seeded provisional groups
-- ✅ `build_2026_bracket()` — R32 → R16 → QF → SF → Final bracket
+- ✅ `build_2026_bracket()` — R32 → R16 → QF → SF → third-place/final replay payload
 - ✅ Dedicated WC2026 seed ETL with placeholder-safe player/coach records
+- ✅ Full WC2026 simulation response with group tables, group-stage fixtures,
+  qualified teams, best third-place table, knockout matches, champion,
+  runner-up, third place, and champion probability
+- ✅ Match-level WC2026 bracket payload includes team codes, scoreline, xG,
+  expected scoreline, statistical/ML/ensemble probabilities, selected
+  prediction mode, winner probability, and advancement reason
+- ✅ WC2026 knockout elimination integrity covered by tests, including
+  semi-final losers appearing only in the third-place match
 - ✅ Historical WC support (2010, 2014, 2018, 2022)
 - 📋 Automatic group draw import from official FIFA feed
 
@@ -189,6 +202,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /ml/feature-names` — feature name list
 - ✅ `GET /ml/explanations` — SHAP explanation
 - ✅ `POST /ml/etl/run` — trigger ETL (admin, async)
+- ✅ `POST /admin/ml/retrain-if-needed` — evaluate retraining thresholds and mark active models
 - ✅ `GET /world-cup/2026/winner-predictions` — ranked WC2026 winner predictions
 - ✅ `GET /world-cup/2026/predictions` — prediction bundle with freshness metadata
 - ✅ `/world_cup/2026/*` — underscore compatibility aliases
@@ -200,10 +214,14 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /data/freshness` — current data/model/feature freshness metadata
 
 ### World Cup 2026
-- ✅ `GET /world-cup/qualified-teams` — qualification list
+- ✅ `GET /world-cup/qualified-teams` — qualification list with current Elo/FIFA display values
 - ✅ `GET /world-cup/groups` — draw status + groups
 - ✅ `GET /world-cup/bracket` — knockout bracket
-- ✅ `POST /world-cup/simulate` — WC2026 Monte Carlo
+- ✅ `POST /world-cup/simulate` — WC2026 Monte Carlo + replayable bracket payload
+- ✅ `POST /world_cup/2026/simulate` — explicit WC2026 simulation alias with
+  `prediction_mode` support (`statistical`, `ml`, `ensemble`)
+- ✅ `GET /world_cup/2026/groups` — explicit WC2026 groups alias
+- ✅ `GET /world_cup/2026/bracket` — explicit WC2026 bracket alias
 - ✅ `GET /world-cup/schedule` — tournament schedule
 - ✅ `GET /world-cup/teams/{team_name}` — team detail + squad + coach
 - ✅ `GET /world-cup/players/{team_name}` — squad list
@@ -212,7 +230,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /admin/analytics` — usage metrics
 - ✅ `POST /admin/data/refresh-elo` — admin-only Elo refresh
 - ✅ `POST /admin/data/refresh-fifa-rankings` — admin-only FIFA ranking refresh
+- ✅ `POST /admin/data/refresh-players` — admin-only player-data refresh
 - ✅ `POST /admin/data/refresh-all` — admin-only global refresh
+- ✅ `POST /admin/ml/retrain-if-needed` — admin-only recalibration check
 - ✅ `GET /health` — liveness probe
 
 ---
@@ -240,15 +260,20 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 
 ### Pages
 - ✅ `/dashboard` — overview, top contenders, recent simulations
-- ✅ `/wc2026` — qualified teams, official groups, Monte Carlo simulation
+- ✅ `/world-cup` — canonical WC2026 dashboard with probabilities, teams, group tables, and bracket tab
+- ✅ `/wc2026/simulate` — explicit full WC2026 simulator route using the canonical dashboard
+- ✅ `/wc2026/bracket` — dedicated bracket simulator with group tables,
+  group fixtures, full knockout columns, mode controls, random rerun, save, and
+  retry/error states
+- ✅ `/wc2026` — legacy route redirected to `/world-cup`
 - ✅ `components/winner-predictions-section.tsx` — winner prediction table and charts
 - ✅ Winner prediction sections on `/dashboard`, `/wc2026`, `/world-cup`, `/tournament`, `/predict`
 - ✅ Freshness indicators on `/`, `/dashboard`, `/wc2026`, `/predict`, `/simulate`, `/tournament`, `/teams`, `/team/[id]`, `/player/[id]`, `/models`
 - ✅ `/compare` — statistical vs all 5 ML models vs ensemble, side-by-side
-- ✅ `/player-lab` — load squads, toggle injuries/suspensions, override form/coach
+- ✅ `/player-lab` — load squads, show ratings/caps/goals, toggle injuries/suspensions, override form/coach
 - ✅ `/models` — model metrics, ensemble weights, feature vector explorer
-- ✅ `/simulate` — statistical single-match predictor
-- ✅ `/tournament` — Monte Carlo tournament runner + bracket
+- ✅ `/simulate` — legacy simulation route redirected to `/world-cup`
+- ✅ `/tournament` — legacy tournament route redirected to `/world-cup`
 - ✅ `/scenarios` — 2–3 scenario comparison
 - ✅ `/teams` — sortable team table
 - ✅ `/team/[id]` — team detail + Elo trend

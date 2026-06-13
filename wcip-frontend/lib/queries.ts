@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import type { Team } from "./types";
+import type { PredictionMode, Team } from "./types";
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
 
@@ -148,6 +148,40 @@ export function useRefreshFifaRankings() {
   });
 }
 
+export function useRefreshPlayers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.refreshPlayers(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-freshness"] });
+      void qc.invalidateQueries({ queryKey: ["wc2026-winner-predictions"] });
+    },
+  });
+}
+
+export function useAdminRetrainIfNeeded() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body?: Parameters<typeof api.adminRetrainIfNeeded>[0]) =>
+      api.adminRetrainIfNeeded(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ml-models"] });
+      void qc.invalidateQueries({ queryKey: ["data-freshness"] });
+    },
+  });
+}
+
+export function useMLRetrain() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, string | undefined>({
+    mutationFn: (model) => api.mlRetrain(model ?? "all"),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ml-models"] });
+      void qc.invalidateQueries({ queryKey: ["data-freshness"] });
+    },
+  });
+}
+
 // ── ML predictions (Phase 2) ──────────────────────────────────────────────────
 
 export function useMLPredict() {
@@ -213,12 +247,14 @@ export function useWC2026Simulate() {
       overrides,
       seed,
       deterministic,
+      predictionMode,
     }: {
       runs: number;
       overrides?: Record<string, Record<string, number>>;
       seed?: number | null;
       deterministic?: boolean;
-    }) => api.wc2026Simulate(runs, overrides, { seed, deterministic }),
+      predictionMode?: PredictionMode;
+    }) => api.wc2026Simulate(runs, overrides, { seed, deterministic, predictionMode }),
   });
 }
 

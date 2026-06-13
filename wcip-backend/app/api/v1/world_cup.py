@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -18,10 +19,14 @@ alias_router = APIRouter(prefix="/world_cup", tags=["world-cup"])
 
 class SimulateRequest(BaseModel):
     year: int = Field(2026, description="Tournament year")
-    runs: int = Field(10_000, ge=100, le=50_000)
+    runs: int = Field(10_000, ge=1, le=50_000)
     overrides: Optional[Dict[str, Dict]] = None
     seed: Optional[int] = None
     deterministic: bool = False
+    prediction_mode: str = Field(
+        "ensemble",
+        description="Match prediction layer used for displayed bracket probabilities: statistical, ml, or ensemble.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -34,11 +39,13 @@ def get_qualified_teams(
     confederation: Optional[str] = Query(None),
     confirmed_only: bool = Query(True),
 ) -> List[Dict[str, Any]]:
-    """Return currently qualified teams for the given World Cup year."""
+    """Return currently qualified teams with current Elo and FIFA ranking."""
     try:
         from sqlalchemy import select
         from app.db.base import SessionLocal
         from app.models.match_result import QualifiedTeam
+        from app.models.team import EloRatingSnapshot, TeamEloRating
+        from app.models.ranking import FifaRankingSnapshot, FifaRankingEntry
 
         db = SessionLocal()
         try:
@@ -54,6 +61,34 @@ def get_qualified_teams(
                 _seed_qualified_teams(year)
                 rows = db.scalars(q.order_by(QualifiedTeam.team_name)).all()
 
+            # Build Elo lookup from current snapshot
+            elo_by_name: Dict[str, float] = {}
+            elo_snapshot = db.scalar(
+                select(EloRatingSnapshot)
+                .where(EloRatingSnapshot.is_current.is_(True))
+                .order_by(EloRatingSnapshot.rating_date.desc(), EloRatingSnapshot.id.desc())
+                .limit(1)
+            )
+            if elo_snapshot:
+                for entry in db.scalars(
+                    select(TeamEloRating).where(TeamEloRating.snapshot_id == elo_snapshot.id)
+                ).all():
+                    elo_by_name[entry.team_name] = entry.rating
+
+            # Build FIFA ranking lookup from current snapshot
+            fifa_by_name: Dict[str, int] = {}
+            fifa_snapshot = db.scalar(
+                select(FifaRankingSnapshot)
+                .where(FifaRankingSnapshot.is_current.is_(True))
+                .order_by(FifaRankingSnapshot.ranking_date.desc(), FifaRankingSnapshot.id.desc())
+                .limit(1)
+            )
+            if fifa_snapshot:
+                for entry in db.scalars(
+                    select(FifaRankingEntry).where(FifaRankingEntry.snapshot_id == fifa_snapshot.id)
+                ).all():
+                    fifa_by_name[entry.team_name] = entry.rank
+
             return [
                 {
                     "team_name": r.team_name,
@@ -64,6 +99,8 @@ def get_qualified_teams(
                     "host_nation": r.host_nation,
                     "confirmed": r.confirmed,
                     "qualification_path": r.qualification_path,
+                    "elo_rating": elo_by_name.get(r.team_name),
+                    "fifa_rank": fifa_by_name.get(r.team_name),
                 }
                 for r in rows
             ]
@@ -125,6 +162,16 @@ def get_bracket(year: int = Query(2026)) -> Dict[str, Any]:
     }
 
 
+@alias_router.get("/2026/groups")
+def get_2026_groups_alias() -> Dict[str, Any]:
+    return get_groups(year=2026)
+
+
+@alias_router.get("/2026/bracket")
+def get_2026_bracket_alias() -> Dict[str, Any]:
+    return get_bracket(year=2026)
+
+
 @router.post("/simulate")
 def simulate_tournament(req: SimulateRequest) -> Dict[str, Any]:
     """Run Monte Carlo tournament simulation with optional team overrides.
@@ -144,9 +191,22 @@ def simulate_tournament(req: SimulateRequest) -> Dict[str, Any]:
             req.overrides or {},
             seed=req.seed,
             deterministic=req.deterministic,
+            prediction_mode=req.prediction_mode,
         )
 
     raise HTTPException(400, f"Year {req.year} not supported")
+
+
+@alias_router.post("/2026/simulate")
+def simulate_2026_alias(req: SimulateRequest) -> Dict[str, Any]:
+    """Contract-friendly alias for the WC2026 tournament simulator."""
+    return _simulate_2026(
+        req.runs,
+        req.overrides or {},
+        seed=req.seed,
+        deterministic=req.deterministic,
+        prediction_mode=req.prediction_mode,
+    )
 
 
 @router.get("/2026/winner-predictions")
@@ -210,6 +270,7 @@ def _simulate_2026(
     *,
     seed: int | None = None,
     deterministic: bool = False,
+    prediction_mode: str = "ensemble",
 ) -> Dict[str, Any]:
     """Run 2026 WC simulation.
 
@@ -257,17 +318,41 @@ def _simulate_2026(
             t.defence = mods.get("defence", 1.0)
 
     seed_to_use = int(seed) if seed is not None else (12345 if deterministic else generate_seed())
+    prediction_mode = _normalize_prediction_mode(prediction_mode)
 
     from wcip.engine.montecarlo import MonteCarloEngine
     engine = MonteCarloEngine(teams_dict, groups, bracket)
     probs = engine.run(n_runs=runs, seed=seed_to_use)
+    sample_seed = _sample_seed_for_monte_carlo(seed_to_use, runs)
+    sample_run = _simulate_single_2026_run(
+        teams_dict,
+        groups,
+        bracket,
+        seed=sample_seed,
+        prediction_mode=prediction_mode,
+        champion_probabilities=probs,
+    )
+    champion = sample_run["champion"]
 
     return {
         "year": 2026,
         "runs": runs,
         "seed": seed_to_use,
         "deterministic": bool(deterministic or seed is not None),
+        "prediction_mode": prediction_mode,
         "draw_complete": bool(build_2026_groups_from_db()),
+        "groups": groups,
+        "champion": champion,
+        "runner_up": sample_run["runner_up"],
+        "third_place": sample_run["third_place"],
+        "fourth_place": sample_run["fourth_place"],
+        "champion_probability": round(probs.get(champion).champion, 5) if champion in probs else None,
+        "group_tables": sample_run["group_tables"],
+        "group_stage_matches": sample_run["group_stage_matches"],
+        "qualified_teams": sample_run["qualified_teams"],
+        "best_third_place": sample_run["best_third_place"],
+        "knockout_bracket": sample_run["knockout_bracket"],
+        "matches": sample_run["matches"],
         "data_snapshot": get_data_freshness(),
         "teams": [
             {
@@ -306,6 +391,371 @@ def _provisional_groups_by_elo(qualified: List[Dict]) -> Dict[str, List[str]]:
 
     # Trim to 4 per group
     return {g: teams[:4] for g, teams in groups.items() if teams}
+
+
+def _sample_seed_for_monte_carlo(seed: int, runs: int) -> Any:
+    """Use the same first RNG stream as MonteCarloEngine for the replay path."""
+    import os
+    import numpy as np
+
+    workers = min(os.cpu_count() or 1, 8)
+    base = runs // workers
+    rem = runs % workers
+    chunks = [base + (1 if i < rem else 0) for i in range(workers)]
+    chunks = [c for c in chunks if c > 0]
+    if not chunks:
+        return seed
+    return np.random.SeedSequence(seed).spawn(len(chunks))[0]
+
+
+def _simulate_single_2026_run(
+    teams_dict: Dict[str, Any],
+    groups: Dict[str, List[str]],
+    bracket: List[tuple],
+    *,
+    seed: Any,
+    prediction_mode: str,
+    champion_probabilities: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Run one replayable WC2026 bracket for group tables and match details."""
+    import numpy as np
+    from wcip.engine.match import MatchSimulator
+    from wcip.engine.scoreline import ScorelineModel
+    from wcip.engine.tournament import GroupRow, TournamentEngine
+
+    rng = np.random.default_rng(seed)
+    sim = MatchSimulator(model=ScorelineModel(), rng=rng)
+    result = TournamentEngine(teams_dict, groups, bracket, simulator=sim).simulate()
+    team_meta = {
+        name: {
+            "code": getattr(team, "code", None) or "???",
+            "confederation": getattr(team, "confederation", None),
+            "elo": getattr(team, "elo", None),
+            "fifa_rank": getattr(team, "fifa_rank", None),
+        }
+        for name, team in teams_dict.items()
+    }
+    prediction_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+
+    qualified = set(result.round_of_32)
+    best_third_teams = {row.team for row in result.best_third_place}
+
+    def row_to_dict(row: GroupRow, rank: int, label: str) -> Dict[str, Any]:
+        if rank <= 2:
+            qualification_type = "automatic"
+        elif row.team in best_third_teams:
+            qualification_type = "best_third"
+        else:
+            qualification_type = "eliminated"
+        return {
+            "rank": rank,
+            "team": row.team,
+            "group": label,
+            "played": row.played,
+            "won": row.won,
+            "drawn": row.drawn,
+            "lost": row.lost,
+            "goals_for": row.gf,
+            "goals_against": row.ga,
+            "goal_difference": row.gd,
+            "points": row.points,
+            "qualified": row.team in qualified,
+            "qualification_type": qualification_type,
+        }
+
+    group_tables = {
+        label: [row_to_dict(row, idx, label) for idx, row in enumerate(rows, start=1)]
+        for label, rows in result.group_tables.items()
+    }
+    group_lookup = {
+        row["team"]: row["group"]
+        for rows in group_tables.values()
+        for row in rows
+    }
+    best_third_place = [
+        {
+            **row_to_dict(row, 3, group_lookup.get(row.team, "")),
+            "rank": idx,
+        }
+        for idx, row in enumerate(result.best_third_place, start=1)
+    ]
+    qualified_teams = [
+        row
+        for rows in group_tables.values()
+        for row in rows
+        if row["qualified"]
+    ]
+
+    group_stage_matches = {
+        label: [
+            _match_to_dict(
+                f"{label}{idx}",
+                match,
+                team_meta=team_meta,
+                prediction_mode=prediction_mode,
+                prediction_cache=prediction_cache,
+                champion_probabilities=champion_probabilities,
+                round_name="Group Stage",
+                order=idx,
+                group=label,
+            )
+            for idx, match in enumerate(matches, start=1)
+        ]
+        for label, matches in result.group_matches.items()
+    }
+
+    matches = [
+        _match_to_dict(
+            match_id,
+            match,
+            team_meta=team_meta,
+            prediction_mode=prediction_mode,
+            prediction_cache=prediction_cache,
+            champion_probabilities=champion_probabilities,
+        )
+        for match_id, match in result.knockout.items()
+    ]
+    round_order = [
+        "Round of 32",
+        "Round of 16",
+        "Quarter-finals",
+        "Semi-finals",
+        "Third-place match",
+        "Final",
+    ]
+    knockout_bracket = [
+        {
+            "round": round_name,
+            "matches": [
+                match for match in matches
+                if match["round"] == round_name
+            ],
+        }
+        for round_name in round_order
+    ]
+
+    return {
+        "seed": seed,
+        "champion": result.champion,
+        "runner_up": result.runner_up,
+        "third_place": result.third_place,
+        "fourth_place": result.fourth_place,
+        "group_tables": group_tables,
+        "group_stage_matches": group_stage_matches,
+        "qualified_teams": qualified_teams,
+        "best_third_place": best_third_place,
+        "knockout_bracket": knockout_bracket,
+        "matches": matches,
+    }
+
+
+def _match_to_dict(
+    match_id: str,
+    match: Any,
+    *,
+    team_meta: Dict[str, Dict[str, Any]],
+    prediction_mode: str,
+    prediction_cache: Dict[tuple[str, str], Dict[str, Any]],
+    champion_probabilities: Dict[str, Any],
+    round_name: str | None = None,
+    order: int | None = None,
+    group: str | None = None,
+) -> Dict[str, Any]:
+    resolved_round, resolved_order = _round_for_match(match_id)
+    round_name = round_name or resolved_round
+    order = resolved_order if order is None else order
+    loser = None
+    if match.winner:
+        loser = match.away if match.winner == match.home else match.home
+    layers = _prediction_layers(match.home, match.away, prediction_mode, prediction_cache)
+    selected = layers["selected_prediction"]
+    winner_probability = _winner_probability(match, selected)
+    winner_champion_probability = None
+    if match.winner in champion_probabilities:
+        winner_champion_probability = round(champion_probabilities[match.winner].champion, 5)
+    scoreline = f"{match.home_goals}-{match.away_goals}"
+    return {
+        "match_id": match_id,
+        "round": round_name,
+        "order": order,
+        "group": group,
+        "home": match.home,
+        "away": match.away,
+        "home_code": _team_code(match.home, team_meta),
+        "away_code": _team_code(match.away, team_meta),
+        "home_goals": match.home_goals,
+        "away_goals": match.away_goals,
+        "winner": match.winner,
+        "loser": loser,
+        "advancing_team": match.winner if round_name != "Group Stage" else None,
+        "decided_by": match.decided_by,
+        "home_xg": round(match.home_xg, 3),
+        "away_xg": round(match.away_xg, 3),
+        "scoreline": scoreline,
+        "expected_scoreline": layers["expected_scoreline"] or f"{match.home} {round(match.home_xg)} - {round(match.away_xg)} {match.away}",
+        "statistical_prediction": layers["statistical_prediction"],
+        "ml_prediction": layers["ml_prediction"],
+        "ensemble_prediction": layers["ensemble_prediction"],
+        "selected_prediction": selected,
+        "prediction_mode": prediction_mode,
+        "effective_prediction_mode": layers["effective_prediction_mode"],
+        "model_used": layers["effective_prediction_mode"],
+        "winner_probability": winner_probability,
+        "champion_probability": winner_champion_probability,
+        "advancement_reason": _advancement_reason(round_name, match, layers["effective_prediction_mode"]),
+    }
+
+
+def _normalize_prediction_mode(mode: str | None) -> str:
+    normalized = (mode or "ensemble").strip().lower()
+    if normalized in {"stat", "stats", "statistical"}:
+        return "statistical"
+    if normalized in {"machine_learning", "machine-learning", "ml"}:
+        return "ml"
+    if normalized == "ensemble":
+        return "ensemble"
+    raise HTTPException(400, "prediction_mode must be one of: statistical, ml, ensemble")
+
+
+def _round_for_match(match_id: str) -> tuple[str, int]:
+    if match_id == "FINAL":
+        return "Final", 999
+    if match_id == "THIRD_PLACE":
+        return "Third-place match", 998
+    try:
+        number = int(match_id.removeprefix("M"))
+    except ValueError:
+        return "Knockout", 0
+    if 49 <= number <= 64:
+        return "Round of 32", number
+    if 65 <= number <= 72:
+        return "Round of 16", number
+    if 73 <= number <= 76:
+        return "Quarter-finals", number
+    if number in {200, 201}:
+        return "Semi-finals", number
+    return "Knockout", number
+
+
+def _team_code(team: str, team_meta: Dict[str, Dict[str, Any]]) -> str:
+    return str(team_meta.get(team, {}).get("code") or team[:3].upper())
+
+
+def _prediction_layers(
+    home: str,
+    away: str,
+    requested_mode: str,
+    cache: Dict[tuple[str, str], Dict[str, Any]],
+) -> Dict[str, Any]:
+    key = (home, away)
+    if key in cache:
+        payload = cache[key]
+    else:
+        payload = _build_prediction_layers(home, away)
+        cache[key] = payload
+
+    effective_mode = requested_mode
+    selected = payload[f"{requested_mode}_prediction"]
+    if requested_mode == "ml" and not selected.get("available", False):
+        selected = payload["ensemble_prediction"]
+        effective_mode = "ensemble_fallback"
+
+    return {
+        **payload,
+        "selected_prediction": selected,
+        "effective_prediction_mode": effective_mode,
+    }
+
+
+def _build_prediction_layers(home: str, away: str) -> Dict[str, Any]:
+    try:
+        from ml.ensemble import predict_hybrid
+
+        prediction = predict_hybrid(home_team=home, away_team=away, include_shap=False).to_dict()
+        statistical = _sanitize_probability_dict(prediction.get("statistical", {}), available=True)
+        ensemble = _sanitize_probability_dict(prediction.get("ensemble", {}), available=True)
+        ml_prediction = _average_ml_predictions(prediction.get("ml_predictions", {}), fallback=ensemble)
+        return {
+            "statistical_prediction": statistical,
+            "ml_prediction": ml_prediction,
+            "ensemble_prediction": ensemble,
+            "expected_scoreline": prediction.get("expected_scoreline", ""),
+        }
+    except Exception as exc:
+        logger.warning("Hybrid prediction failed for %s vs %s: %s", home, away, exc)
+        fallback = _sanitize_probability_dict({}, available=False)
+        return {
+            "statistical_prediction": fallback,
+            "ml_prediction": {**fallback, "available": False},
+            "ensemble_prediction": fallback,
+            "expected_scoreline": "",
+        }
+
+
+def _average_ml_predictions(
+    predictions: Dict[str, Dict[str, Any]],
+    *,
+    fallback: Dict[str, Any],
+) -> Dict[str, Any]:
+    if not predictions:
+        return {**fallback, "available": False, "models_used": []}
+    values = [_sanitize_probability_dict(p, available=True) for p in predictions.values()]
+    averaged = {
+        "home_win": sum(v["home_win"] for v in values) / len(values),
+        "draw": sum(v["draw"] for v in values) / len(values),
+        "away_win": sum(v["away_win"] for v in values) / len(values),
+    }
+    return {
+        **_sanitize_probability_dict(averaged, available=True),
+        "models_used": sorted(predictions.keys()),
+    }
+
+
+def _sanitize_probability_dict(raw: Dict[str, Any], *, available: bool) -> Dict[str, Any]:
+    vals = [
+        _safe_probability(raw.get("home_win", 1 / 3)),
+        _safe_probability(raw.get("draw", 1 / 3)),
+        _safe_probability(raw.get("away_win", 1 / 3)),
+    ]
+    total = sum(vals)
+    if total <= 1e-8:
+        vals = [1 / 3, 1 / 3, 1 / 3]
+    else:
+        vals = [v / total for v in vals]
+    return {
+        "home_win": round(vals[0], 6),
+        "draw": round(vals[1], 6),
+        "away_win": round(vals[2], 6),
+        "available": available,
+    }
+
+
+def _safe_probability(value: Any) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(numeric):
+        return 0.0
+    return max(0.0, min(1.0, numeric))
+
+
+def _winner_probability(match: Any, selected: Dict[str, Any]) -> float:
+    if match.winner == match.home:
+        return selected["home_win"]
+    if match.winner == match.away:
+        return selected["away_win"]
+    return selected["draw"]
+
+
+def _advancement_reason(round_name: str, match: Any, mode: str) -> str:
+    if round_name == "Group Stage":
+        return "Group-stage result updates the table; qualification is decided by points, goal difference, and goals for."
+    if match.decided_by == "penalties":
+        return f"{match.winner} advanced on penalties after a drawn knockout scoreline."
+    if match.decided_by == "extra_time":
+        return f"{match.winner} advanced after extra time under {mode} prediction mode."
+    return f"{match.winner} advanced by simulated scoreline under {mode} prediction mode."
 
 
 @router.get("/schedule")
@@ -418,6 +868,10 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
                     "minutes_played": p.minutes_played,
                     "international_caps": p.international_caps,
                     "international_goals": p.international_goals,
+                    "player_rating": p.player_rating,
+                    "ea_fc_rating": p.ea_fc_rating,
+                    "player_rating_source": p.player_rating_source,
+                    "player_rating_version": p.player_rating_version,
                     "injured": p.injured,
                     "suspended": p.suspended,
                     "fitness_score": p.fitness_score,

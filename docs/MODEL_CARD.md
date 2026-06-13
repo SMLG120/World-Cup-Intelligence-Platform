@@ -245,6 +245,12 @@ new FIFA/Elo/player data changes materially, `python -m ml.retrain_if_needed --a
 marks active models as requiring recalibration or retraining without retraining on
 every small source change.
 
+`python -m ml.validate_player_features` checks sparse squads, duplicate player
+rows, invalid ratings, unmapped positions, null-heavy fields, feature-order
+compatibility, and NaN/inf safety for the player-derived feature slice. Sparse
+legal player data is reported as a warning; invalid values and feature schema
+mismatches fail the report.
+
 ---
 
 ## Model Selection Process
@@ -323,6 +329,7 @@ missing historical periods use neutral ranking values to avoid data leakage.
 | Trigger | Command | Description |
 |---|---|---|
 | Admin API | `POST /api/v1/ml/retrain {"model": "all"}` | Incremental retrain on new data |
+| Admin threshold API | `POST /api/v1/admin/ml/retrain-if-needed` | Evaluate material Elo/FIFA/player/result changes and mark models |
 | Ranking monitor | `check_fifa_ranking_update(trigger_retraining=True)` | Mark/retrain after material FIFA ranking movement |
 | Data freshness monitor | `python -m ml.retrain_if_needed --apply` | Mark active models when Elo, FIFA, or player-data deltas exceed thresholds |
 | Manual | `python -m ml.train --model all` | Full retrain from CLI |
@@ -333,6 +340,11 @@ Recommended cadence:
 - After loading a new batch of historical results via ETL
 - After a material FIFA ranking snapshot update
 - After historical FIFA ranking or Elo snapshots are backfilled
+
+WC2026 tournament simulations expose the data snapshot, random seed, aggregate
+champion probabilities, one replayable group-stage table set, best third-place
+ranking, knockout bracket, third-place match, and final. The bracket simulation
+uses system entropy unless a seed is explicitly supplied.
 
 ---
 

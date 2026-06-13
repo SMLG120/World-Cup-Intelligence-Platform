@@ -320,15 +320,20 @@ When `trigger_retraining=True`, material ranking updates call
 
 ---
 
-## Source 4: Player Ratings And Form CSV
+## Source 4: Player Ratings, FIFA Squad Lists, And Form CSV
 
 ### Source Details
-- **Default path:** `wcip-backend/data/external/ea_player_ratings.csv`
+- **Preferred generated path:** `wcip-backend/data/external/fifa_wc2026_squad_players.csv`
+- **Manual fallback path:** `wcip-backend/data/external/ea_player_ratings.csv`
+- **FIFA squad PDF:** `https://fdp.fifa.org/assetspublic/ce281/pdf/SquadLists-English.pdf`
 - **Allowed sources:** licensed APIs, public datasets, manually maintained CSV
   files with attribution, or other data you have permission to use
 - **Disallowed by policy:** scraping proprietary pages whose terms prohibit it,
   including FotMob, SofaScore, Transfermarkt, Opta, or EA pages unless you have a
   legal data source
+- **Important:** the FIFA squad PDF provides factual roster fields, not official
+  scouting ratings. `etl.players.fifa_squad_pdf` derives conservative
+  `fifa_roster_proxy_v1` ratings from position, age, caps, goals, and height.
 
 ### CSV Schema
 
@@ -339,6 +344,35 @@ player_name,team_name,position,club,age,international_caps,
 international_goals,recent_form_score,injured,suspended,minutes_played,
 goals,assists,xg,xa,market_value_eur,player_rating,ea_fc_rating
 ```
+
+Additional FIFA-generated columns such as `source_player_name`, `dob`,
+`height_cm`, `fifa_team_code`, `rating_method`, `source_url`, and
+`source_version` are preserved in row-level import metadata.
+
+### FIFA Squad PDF Conversion
+**File:** `etl/players/fifa_squad_pdf.py`
+
+```bash
+cd wcip-backend
+python -m etl.players.fifa_squad_pdf --download --import-db
+```
+
+If external download is unavailable, place the PDF at:
+
+```text
+wcip-backend/data/external/fifa_wc2026_squad_lists_english.pdf
+```
+
+Then run:
+
+```bash
+python -m etl.players.fifa_squad_pdf \
+  --source-pdf data/external/fifa_wc2026_squad_lists_english.pdf \
+  --import-db
+```
+
+The command writes `data/external/fifa_wc2026_squad_players.csv`, then imports
+it with `source_name="fifa_wc2026_squad_pdf"` when `--import-db` is provided.
 
 ### Extract/Load Step
 **File:** `etl/player_ratings/csv_import.py`
@@ -370,8 +404,9 @@ Pipeline wrapper:
 python -c "from etl.pipeline import run_player_rating_import; print(run_player_rating_import())"
 ```
 
-If the default file is missing, the wrapper returns a skipped status and leaves
-placeholder player records untouched.
+The pipeline wrapper prefers the generated FIFA CSV when present. If no player
+CSV is available, it returns a skipped status and leaves placeholder player
+records untouched.
 
 ---
 
@@ -443,6 +478,7 @@ python -c "from etl.monitoring.ranking_monitor import check_fifa_ranking_update;
 
 # Admin API (async, admin token required)
 curl -X POST /api/v1/ml/etl/run -H "Authorization: Bearer <token>"
+curl -X POST /api/v1/admin/ml/retrain-if-needed -H "Authorization: Bearer <token>" -d '{"material_elo_changes":10}'
 ```
 
 ### Celery Scheduled Jobs
@@ -454,6 +490,7 @@ curl -X POST /api/v1/ml/etl/run -H "Authorization: Bearer <token>"
 | `weekly_elo_update` | Weekly | `run_elo_update()` from eloratings.net |
 | `fifa_rankings_update` | Daily | `check_fifa_ranking_update()` against official FIFA rankings |
 | `full_pipeline` | On-demand | `run_full_pipeline()` |
+| `etl.retrain_if_needed` | Daily | Mark active models if data-change thresholds require recalibration |
 
 ---
 
@@ -616,6 +653,7 @@ sees a match before training on it.
 | Elo duplicate teams | `validate_elo_snapshot()` | Reject duplicate team keys |
 | Historical ranking leakage | `build_feature_vector()` | Use snapshot date <= match date or neutral fallback |
 | Feature NaN / inf | `ml/validate_features.py` | Fail validation report |
+| Player feature coverage | `ml/validate_player_features.py` | Warn on sparse legal player data; fail on invalid ratings/order/NaN |
 
 ---
 
@@ -640,7 +678,7 @@ ML training (5 models)
     ↓  models/catboost.pkl
     ↓  ml_models registry (metrics + weights)
 predict_hybrid(home, away)
-    ↓  build_feature_vector()    → [17 floats]
+    ↓  build_feature_vector()    → [33 floats]
     ↓  predict_all_models()      → {logistic: {...}, rf: {...}, ...}
     ↓  statistical layer         → Elo/Poisson probabilities
     ↓  ensemble calculation      → weighted blend
@@ -676,13 +714,16 @@ Celery beat schedules:
 | `etl.refresh_fifa_rankings` | 24 hours | Check FIFA official ranking publication |
 | `etl.refresh_player_availability` | 24 hours | Import legal/manual player availability CSV if present |
 | `etl.refresh_prediction_cache` | 6 hours | Invalidate stale prediction and team caches |
+| `etl.retrain_if_needed` | 24 hours | Run the retraining threshold monitor |
 
 Admin endpoints:
 
 ```text
 POST /api/v1/admin/data/refresh-elo
 POST /api/v1/admin/data/refresh-fifa-rankings
+POST /api/v1/admin/data/refresh-players
 POST /api/v1/admin/data/refresh-all
+POST /api/v1/admin/ml/retrain-if-needed
 ```
 
 Public freshness and rating endpoints:
@@ -700,8 +741,25 @@ Manual validation:
 ```bash
 cd wcip-backend
 python -m ml.validate_features
+python -m ml.validate_player_features
 python -m ml.retrain_if_needed --material-ranking-changes 5 --apply
 ```
+
+### WC2026 Simulation Output
+
+`POST /api/v1/world_cup/2026/simulate` returns both aggregate Monte Carlo
+probabilities and one replayable tournament path. The replay payload includes:
+
+- `group_tables` with P/W/D/L/GF/GA/GD/points and qualification labels
+- `best_third_place` with the eight third-place qualifiers
+- `knockout_bracket` grouped by Round of 32, Round of 16, quarter-finals,
+  semi-finals, third-place match, and final
+- `matches` as a flat match list with score, xG, winner, loser, and decision
+  method
+- `champion`, `runner_up`, and `third_place`
+
+If `seed` is omitted, the API uses system entropy. Supplying `seed` makes the
+aggregate probabilities and replayed bracket reproducible.
 
 ## Player Data Source Policy
 

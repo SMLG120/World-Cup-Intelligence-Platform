@@ -136,6 +136,7 @@ Key files:
 - `wcip-backend/app/services/data_refresh_service.py` — refresh orchestration
 - `wcip-backend/app/services/rating_update_service.py` — idempotent Elo update after match result changes
 - `wcip-backend/ml/validate_features.py` — feature shape/NaN/inf validation
+- `wcip-backend/ml/validate_player_features.py` — player-data coverage and player-feature validation
 - `wcip-backend/ml/retrain_if_needed.py` — recalibration trigger decision script
 
 Step by step:
@@ -155,7 +156,9 @@ Step by step:
 7. Admin users can call:
    - `POST /api/v1/admin/data/refresh-elo`
    - `POST /api/v1/admin/data/refresh-fifa-rankings`
+   - `POST /api/v1/admin/data/refresh-players`
    - `POST /api/v1/admin/data/refresh-all`
+   - `POST /api/v1/admin/ml/retrain-if-needed`
 8. The frontend displays freshness indicators and admin refresh controls on the
    main prediction, simulation, team, player, and model pages.
 
@@ -167,6 +170,7 @@ etl.refresh_fifa_rankings
 etl.refresh_world_cup_results
 etl.refresh_player_availability
 etl.refresh_prediction_cache
+etl.retrain_if_needed
 ```
 
 Manual validation:
@@ -174,6 +178,7 @@ Manual validation:
 ```bash
 cd wcip-backend
 python -m ml.validate_features
+python -m ml.validate_player_features
 python -m ml.retrain_if_needed --material-ranking-changes 5 --apply
 curl http://localhost:8000/api/v1/data/freshness
 curl http://localhost:8000/api/v1/ratings/elo/latest?limit=10
@@ -323,7 +328,62 @@ For tournament simulation:
 1. The API receives an edition and run count.
 2. `MonteCarloEngine` replays the tournament many times.
 3. Knockouts resolve tied matches through extra-time and penalty logic.
-4. Results aggregate into stage probabilities and champion odds.
+4. WC2026 responses include one replayable tournament path with group tables,
+   best third-place standings, knockout matches, final, third-place match, and
+   champion.
+5. Results also aggregate into stage probabilities and champion odds.
+
+For the full 2026 bracket simulation:
+
+1. `POST /api/v1/world_cup/2026/simulate` accepts `runs`, optional `seed`,
+   `deterministic`, and `prediction_mode` (`statistical`, `ml`, or
+   `ensemble`).
+2. The backend loads the 48 WC2026 teams and groups from the database. If a
+   draw is missing, it creates provisional Elo-seeded groups.
+3. The tournament engine simulates all 72 group-stage fixtures and ranks each
+   group by points, goal difference, and goals for.
+4. The top two teams in each group advance automatically.
+5. The eight best third-place teams advance by the same table tiebreakers.
+6. The Round of 32 bracket resolves winners through Round of 16,
+   quarter-finals, semi-finals, third-place match, final, and champion.
+7. Each serialized match includes team codes, simulated score, xG, expected
+   scoreline, statistical prediction, ML prediction, ensemble prediction,
+   selected prediction mode, winner probability, champion probability, and an
+   advancement reason.
+8. The aggregate `teams` list still comes from Monte Carlo runs, while the
+   `group_stage_matches` and `knockout_bracket` fields show one replayable path.
+
+Important response fields:
+
+```json
+{
+  "year": 2026,
+  "runs": 10000,
+  "prediction_mode": "ensemble",
+  "groups": { "A": ["Mexico", "South Africa", "South Korea", "Czechia"] },
+  "group_tables": { "A": [{ "team": "Mexico", "points": 7, "qualified": true }] },
+  "group_stage_matches": { "A": [{ "home": "Mexico", "away": "South Africa" }] },
+  "qualified_teams": [{ "team": "Mexico", "qualification_type": "automatic" }],
+  "best_third_place": [{ "team": "Canada", "rank": 1 }],
+  "knockout_bracket": [
+    {
+      "round": "Round of 32",
+      "matches": [
+        {
+          "home": "Mexico",
+          "away": "Canada",
+          "scoreline": "2-1",
+          "selected_prediction": { "home_win": 0.45, "draw": 0.25, "away_win": 0.30 },
+          "winner_probability": 0.45,
+          "advancing_team": "Mexico"
+        }
+      ]
+    }
+  ],
+  "champion": "France",
+  "champion_probability": 0.13
+}
+```
 
 For hybrid ML prediction:
 
@@ -349,9 +409,13 @@ The frontend is a Next.js app in `wcip-frontend`.
 ### Main Screens
 
 - `/dashboard` gives the user an overview of teams and predictions.
-- `/predict` and `/simulate` provide single-match tools.
-- `/tournament` runs Monte Carlo tournament simulations.
-- `/wc2026` and `/world-cup` expose World Cup 2026 views.
+- `/world-cup` is the main World Cup 2026 intelligence center.
+- `/wc2026/simulate` opens the full World Cup 2026 tournament simulator.
+- `/wc2026/bracket` opens the dedicated bracket simulation view with group
+  tables first, then Round of 32 through champion.
+- `/predict` remains the lightweight single-match predictor.
+- `/simulate`, `/tournament`, and `/wc2026` route users back to the main World
+  Cup experience to avoid duplicate simulation screens.
 - `/teams` lists teams and links to team detail pages.
 - `/team/[id]` shows one team.
 - `/player/[id]` shows one player.
@@ -374,8 +438,10 @@ The frontend is a Next.js app in `wcip-frontend`.
 8. Submit the form.
 9. The frontend calls the relevant backend endpoint.
 10. Results render as probabilities, cards, charts, or bracket views.
-11. Admin users see a `Refresh Data` button that triggers global data refresh.
-12. If logged in, users can save simulations and revisit them later.
+11. Admin users can refresh Elo, FIFA rankings, player data, all data, check
+    retraining thresholds, or trigger retraining from the freshness strip.
+12. After a WC2026 simulation finishes, logged-in users can save the full group
+    table, bracket, match list, champion probabilities, seed, and data snapshot.
 
 ## API Map
 
@@ -410,6 +476,7 @@ All backend API routes use the `/api/v1` prefix.
 | `POST` | `/ml/train` | Trigger model training |
 | `POST` | `/ml/retrain` | Trigger retraining |
 | `POST` | `/ml/etl/run` | Trigger the ETL pipeline |
+| `POST` | `/admin/ml/retrain-if-needed` | Admin retraining threshold check |
 | `GET` | `/ratings/elo/latest` | Current stored Elo snapshot |
 | `GET` | `/ratings/elo/history/{team_id}` | Versioned Elo history for one team |
 | `GET` | `/rankings/fifa/latest` | Current stored FIFA ranking snapshot |
@@ -420,11 +487,15 @@ All backend API routes use the `/api/v1` prefix.
 | `GET` | `/data/freshness` | Elo, FIFA, match, player, model, and feature freshness |
 | `POST` | `/admin/data/refresh-elo` | Admin-only Elo refresh |
 | `POST` | `/admin/data/refresh-fifa-rankings` | Admin-only FIFA ranking refresh |
+| `POST` | `/admin/data/refresh-players` | Admin-only legal player-data refresh |
 | `POST` | `/admin/data/refresh-all` | Admin-only global refresh |
-| `GET` | `/world-cup/qualified-teams` | WC2026 qualified-team list |
+| `GET` | `/world-cup/qualified-teams` | WC2026 qualified-team list with Elo/FIFA display values |
 | `GET` | `/world-cup/groups` | WC2026 groups or pending draw status |
 | `GET` | `/world-cup/bracket` | WC2026 knockout bracket |
-| `POST` | `/world-cup/simulate` | WC2026 tournament simulation |
+| `POST` | `/world-cup/simulate` | WC2026 tournament simulation with full replayable bracket |
+| `POST` | `/world_cup/2026/simulate` | Explicit WC2026 simulation alias with `prediction_mode` |
+| `GET` | `/world_cup/2026/groups` | Explicit WC2026 groups alias |
+| `GET` | `/world_cup/2026/bracket` | Explicit WC2026 bracket alias |
 | `GET` | `/world-cup/schedule` | WC2026 schedule metadata |
 | `GET` | `/world-cup/teams/{team_name}` | WC2026 team, squad, and coach detail |
 | `GET` | `/world-cup/players/{team_name}` | WC2026 squad list |
@@ -579,6 +650,58 @@ cd wcip-backend
 python -c "from etl.world_cup_2026.ingest import run_wc2026_seed; print(run_wc2026_seed(source_path='data/wc2026_snapshot.json'))"
 ```
 
+### Build FIFA Squad CSV For Player Lab And ML
+
+The official FIFA squad-list PDF can be converted into an importer-ready CSV.
+The PDF fields are factual roster fields, not official player ratings. The
+converter derives conservative `fifa_roster_proxy_v1` ratings from position,
+age, caps, goals, and height so the existing player-strength feature pipeline
+has non-neutral squad signal.
+
+Install requirements first so PDF extraction is available:
+
+```bash
+cd wcip-backend
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Build the CSV directly from the FIFA source and import it into the database:
+
+```bash
+cd wcip-backend
+python -m etl.players.fifa_squad_pdf --download --import-db
+```
+
+If the environment cannot download external files, download the PDF manually to:
+
+```text
+wcip-backend/data/external/fifa_wc2026_squad_lists_english.pdf
+```
+
+Then run:
+
+```bash
+cd wcip-backend
+python -m etl.players.fifa_squad_pdf \
+  --source-pdf data/external/fifa_wc2026_squad_lists_english.pdf \
+  --import-db
+```
+
+Generated CSV:
+
+```text
+wcip-backend/data/external/fifa_wc2026_squad_players.csv
+```
+
+After import:
+
+1. `/api/v1/world-cup/players/{team_name}` returns the real squad rows.
+2. `/player-lab` shows player rating, caps, goals, club, age, and availability.
+3. `ml/features.py` uses the imported player ratings for squad depth,
+   positional-unit strength, top-five player strength, availability, caps,
+   goals, and weighted player-strength features.
+
 ### Run A Match Prediction
 
 ```bash
@@ -602,13 +725,60 @@ curl -X POST http://localhost:8000/api/v1/tournament/simulate \
   }'
 ```
 
+### Run A Full WC2026 Simulation
+
+```bash
+curl -X POST http://localhost:8000/api/v1/world_cup/2026/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "runs": 1000,
+    "seed": null,
+    "deterministic": false,
+    "prediction_mode": "ensemble"
+  }'
+```
+
+The response includes aggregate probabilities plus `group_tables`,
+`group_stage_matches`, `qualified_teams`, `best_third_place`,
+`knockout_bracket`, `matches`, `champion`, `runner_up`, `third_place`, and the
+selected prediction layers for every serialized match.
+
+### Test The Full WC2026 Bracket Locally
+
+1. Start the backend:
+
+```bash
+cd wcip-backend
+source .venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+2. Start the frontend:
+
+```bash
+cd wcip-frontend
+npm run dev
+```
+
+3. Open `http://localhost:3000/wc2026/bracket`.
+4. Pick a simulation count.
+5. Pick `Ensemble`, `Statistical`, or `ML` mode.
+6. Click `Run`.
+7. Confirm group tables render before the bracket.
+8. Confirm the bracket shows Round of 32, Round of 16, Quarter-finals,
+   Semi-finals, Third-place Match, Final, and Champion.
+9. Click `Random run` or `Rerun` to generate a different unseeded path.
+10. Sign in and click `Save Simulation` to persist the full bracket to your
+    account.
+
 ## Repository Layout
 
 ```text
 .
 ├── README.md
-├── DATA_PIPELINE.md
-├── MODEL_CARD.md
+├── docs
+│   ├── DATA_PIPELINE.md
+│   └── MODEL_CARD.md
 ├── ARCHITECTURE.md
 ├── API.md
 ├── CODE_CLEANUP_AUDIT.md
@@ -648,6 +818,9 @@ Backend:
 ```bash
 cd wcip-backend
 env DEBUG=false pytest -q
+python -m ml.validate_features
+python -m ml.validate_player_features
+python -m ml.retrain_if_needed
 ```
 
 Focused WC2026 seed ETL test:
@@ -663,6 +836,7 @@ Frontend:
 cd wcip-frontend
 npm run typecheck
 npm run build
+npm run lint
 ```
 
 Safety:

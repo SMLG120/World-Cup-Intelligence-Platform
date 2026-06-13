@@ -45,6 +45,10 @@ class PlayerOut(BaseModel):
     market_value_eur: Optional[float]
     international_caps: int
     international_goals: int
+    player_rating: Optional[float]
+    ea_fc_rating: Optional[float]
+    player_rating_source: Optional[str]
+    player_rating_version: Optional[str]
     injured: bool
     suspended: bool
     profile_description: Optional[str]

@@ -46,4 +46,8 @@ celery_app.conf.beat_schedule = {
         "task": "etl.refresh_prediction_cache",
         "schedule": 6 * 60 * 60,
     },
+    "check-ml-retraining-daily": {
+        "task": "etl.retrain_if_needed",
+        "schedule": 24 * 60 * 60,
+    },
 }

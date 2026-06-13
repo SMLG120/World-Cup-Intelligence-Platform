@@ -251,6 +251,8 @@ export interface QualifiedTeam {
   host_nation: boolean;
   confirmed: boolean;
   qualification_path: string | null;
+  elo_rating: number | null;
+  fifa_rank: number | null;
 }
 
 export interface WC2026Groups {
@@ -261,12 +263,89 @@ export interface WC2026Groups {
   qualification_status: { confirmed: number; total_slots: number };
 }
 
+export interface WC2026GroupRow {
+  rank: number;
+  team: string;
+  group: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goals_for: number;
+  goals_against: number;
+  goal_difference: number;
+  points: number;
+  qualified: boolean;
+  qualification_type: "automatic" | "best_third" | "eliminated";
+}
+
+export type PredictionMode = "statistical" | "ml" | "ensemble";
+
+export interface WC2026MatchPrediction {
+  home_win: number;
+  draw: number;
+  away_win: number;
+  available?: boolean;
+  models_used?: string[];
+}
+
+export interface WC2026Match {
+  match_id: string;
+  round: string;
+  order: number;
+  group?: string | null;
+  home: string;
+  away: string;
+  home_code?: string;
+  away_code?: string;
+  home_goals: number;
+  away_goals: number;
+  winner: string | null;
+  loser: string | null;
+  advancing_team?: string | null;
+  decided_by: "regulation" | "extra_time" | "penalties" | string;
+  home_xg: number;
+  away_xg: number;
+  scoreline?: string;
+  expected_scoreline?: string;
+  statistical_prediction?: WC2026MatchPrediction;
+  ml_prediction?: WC2026MatchPrediction;
+  ensemble_prediction?: WC2026MatchPrediction;
+  selected_prediction?: WC2026MatchPrediction;
+  prediction_mode?: PredictionMode;
+  effective_prediction_mode?: PredictionMode | "ensemble_fallback" | string;
+  model_used?: string;
+  winner_probability?: number | null;
+  champion_probability?: number | null;
+  advancement_reason?: string;
+}
+
+export type WC2026KnockoutMatch = WC2026Match;
+
+export interface WC2026KnockoutRound {
+  round: string;
+  matches: WC2026KnockoutMatch[];
+}
+
 export interface WC2026Simulation {
   year: number;
   runs: number;
   seed?: number | null;
   deterministic?: boolean;
+  prediction_mode?: PredictionMode;
   draw_complete: boolean;
+  groups?: Record<string, string[]>;
+  champion?: string | null;
+  runner_up?: string | null;
+  third_place?: string | null;
+  fourth_place?: string | null;
+  champion_probability?: number | null;
+  group_tables?: Record<string, WC2026GroupRow[]>;
+  group_stage_matches?: Record<string, WC2026Match[]>;
+  qualified_teams?: WC2026GroupRow[];
+  best_third_place?: WC2026GroupRow[];
+  knockout_bracket?: WC2026KnockoutRound[];
+  matches?: WC2026Match[];
   data_snapshot?: DataFreshness;
   teams: TeamProbability[];
 }
@@ -346,6 +425,10 @@ export interface Player {
   minutes_played: number;
   international_caps: number;
   international_goals: number;
+  player_rating?: number | null;
+  ea_fc_rating?: number | null;
+  player_rating_source?: string | null;
+  player_rating_version?: string | null;
   injured: boolean;
   suspended: boolean;
   fitness_score: number;

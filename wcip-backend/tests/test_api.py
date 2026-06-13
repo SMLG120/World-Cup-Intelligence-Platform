@@ -61,15 +61,84 @@ def test_tournament_sync_threshold_guard(client):
 
 def test_world_cup_2026_simulation_runs(client):
     r = client.post("/api/v1/world-cup/simulate",
-                    json={"year": 2026, "runs": 100})
+                    json={"year": 2026, "runs": 100, "prediction_mode": "ensemble"})
     assert r.status_code == 200
     body = r.json()
     assert body["year"] == 2026
     assert body["runs"] == 100
+    assert body["prediction_mode"] == "ensemble"
     assert body["seed"] is not None
     assert body["deterministic"] is False
     assert body["teams"]
     assert sum(t["champion"] for t in body["teams"]) > 0
+    assert body["champion"]
+    assert body["runner_up"]
+    assert body["third_place"]
+    assert len(body["group_tables"]) == 12
+    assert all(len(rows) == 4 for rows in body["group_tables"].values())
+    assert len(body["qualified_teams"]) == 32
+    assert len(body["group_stage_matches"]) == 12
+    assert sum(len(matches) for matches in body["group_stage_matches"].values()) == 72
+    assert len(body["best_third_place"]) == 8
+    assert len(body["knockout_bracket"]) == 6
+    rounds = {round_payload["round"]: round_payload for round_payload in body["knockout_bracket"]}
+    assert len(rounds["Round of 32"]["matches"]) == 16
+    assert len(rounds["Round of 16"]["matches"]) == 8
+    assert len(rounds["Quarter-finals"]["matches"]) == 4
+    assert len(rounds["Semi-finals"]["matches"]) == 2
+    assert len(rounds["Third-place match"]["matches"]) == 1
+    assert len(rounds["Final"]["matches"]) == 1
+    first_match = rounds["Round of 32"]["matches"][0]
+    assert first_match["advancing_team"] == first_match["winner"]
+    assert first_match["winner_probability"] is not None
+    assert first_match["expected_scoreline"]
+    assert first_match["advancement_reason"]
+    for key in ("statistical_prediction", "ml_prediction", "ensemble_prediction", "selected_prediction"):
+        probs = first_match[key]
+        total = probs["home_win"] + probs["draw"] + probs["away_win"]
+        assert abs(total - 1.0) < 1e-5
+        assert all(0 <= probs[k] <= 1 for k in ("home_win", "draw", "away_win"))
+
+
+def test_world_cup_2026_knockout_elimination_integrity(client):
+    r = client.post("/api/v1/world_cup/2026/simulate",
+                    json={"runs": 1, "seed": 2026, "prediction_mode": "statistical"})
+    assert r.status_code == 200
+    body = r.json()
+    rounds = {round_payload["round"]: round_payload["matches"] for round_payload in body["knockout_bracket"]}
+    eliminated = set()
+    semi_losers = set()
+
+    for round_name in ["Round of 32", "Round of 16", "Quarter-finals", "Semi-finals", "Final"]:
+        for match in sorted(rounds[round_name], key=lambda m: m["order"]):
+            assert match["home"] not in eliminated
+            assert match["away"] not in eliminated
+            assert match["winner"] in {match["home"], match["away"]}
+            assert match["loser"] in {match["home"], match["away"]}
+            if round_name == "Semi-finals":
+                semi_losers.add(match["loser"])
+            else:
+                eliminated.add(match["loser"])
+
+    third_place = rounds["Third-place match"][0]
+    assert {third_place["home"], third_place["away"]} == semi_losers
+    assert third_place["winner"] in semi_losers
+    assert body["champion"] not in semi_losers
+    assert body["runner_up"] not in semi_losers
+
+
+def test_world_cup_2026_contract_alias_single_run(client):
+    r = client.post("/api/v1/world_cup/2026/simulate",
+                    json={"runs": 1, "seed": 123, "prediction_mode": "statistical"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["runs"] == 1
+    assert body["seed"] == 123
+    assert body["deterministic"] is True
+    assert body["prediction_mode"] == "statistical"
+    assert body["matches"]
+    assert client.get("/api/v1/world_cup/2026/groups").status_code == 200
+    assert client.get("/api/v1/world_cup/2026/bracket").status_code == 200
 
 
 def test_tournament_seed_semantics(client):
@@ -88,6 +157,8 @@ def test_tournament_seed_semantics(client):
     assert seeded_a["seed"] == seeded_b["seed"] == 99
     assert seeded_a["deterministic"] is True
     assert seeded_a["teams"] == seeded_b["teams"]
+    assert seeded_a["group_tables"] == seeded_b["group_tables"]
+    assert seeded_a["knockout_bracket"] == seeded_b["knockout_bracket"]
 
 
 def test_world_cup_2026_groups_are_official_shape(client):

@@ -40,6 +40,7 @@ class GroupRow:
 @dataclass
 class TournamentResult:
     group_tables: Dict[str, List[GroupRow]]
+    group_matches: Dict[str, List[MatchResult]]
     knockout: Dict[str, MatchResult]
     champion: str
     runner_up: str
@@ -47,6 +48,10 @@ class TournamentResult:
     quarter_finalists: List[str]
     round_of_16: List[str]
     round_of_32: List[str] = field(default_factory=list)
+    third_place: Optional[str] = None
+    fourth_place: Optional[str] = None
+    third_place_match: Optional[MatchResult] = None
+    best_third_place: List[GroupRow] = field(default_factory=list)
 
 
 def _profile(team_obj, elo_lookup: Dict[str, float]) -> TeamMatchProfile:
@@ -77,8 +82,9 @@ class TournamentEngine:
         self.elo = elo_overrides or {name: t.elo for name, t in teams.items()}
 
     # ---- group stage -------------------------------------------------------
-    def _play_group(self, group_teams: List[str]) -> List[GroupRow]:
+    def _play_group(self, group_teams: List[str]) -> tuple[List[GroupRow], List[MatchResult]]:
         rows = {name: GroupRow(team=name) for name in group_teams}
+        matches: List[MatchResult] = []
         # Round-robin: every unordered pair once.
         for i in range(len(group_teams)):
             for j in range(i + 1, len(group_teams)):
@@ -89,7 +95,8 @@ class TournamentEngine:
                     knockout=False,
                 )
                 self._record(rows[a], rows[b], res)
-        return self._rank_group(rows)
+                matches.append(res)
+        return self._rank_group(rows), matches
 
     @staticmethod
     def _record(row_a: GroupRow, row_b: GroupRow, res: MatchResult) -> None:
@@ -132,11 +139,13 @@ class TournamentEngine:
     def simulate(self) -> TournamentResult:
         # 1. Group stage.
         tables: Dict[str, List[GroupRow]] = {}
+        group_matches: Dict[str, List[MatchResult]] = {}
         positions: Dict[str, str] = {}
         third_place_rows: List[GroupRow] = []
         for label, group_teams in self.groups.items():
-            ranked = self._play_group(group_teams)
+            ranked, matches = self._play_group(group_teams)
             tables[label] = ranked
+            group_matches[label] = matches
             positions[f"1{label}"] = ranked[0].team
             positions[f"2{label}"] = ranked[1].team
             if len(ranked) > 2:
@@ -149,6 +158,7 @@ class TournamentEngine:
         )
         for i, row in enumerate(best_thirds[:8], start=1):
             positions[f"B3_{i}"] = row.team
+        best_third_place = best_thirds[:8]
         round_of_32 = sorted(set(positions.values()))
 
         # 2. Knockout.
@@ -169,6 +179,27 @@ class TournamentEngine:
         final_res = knockout["FINAL"]
         runner_up = final_res.away if final_res.winner == final_res.home else final_res.home
         semi_ids = self._previous_match_ids("FINAL")
+        semi_losers = [
+            match.away if match.winner == match.home else match.home
+            for semi_id in semi_ids
+            if (match := knockout.get(semi_id)) is not None
+        ]
+        third_place = None
+        fourth_place = None
+        third_place_match = None
+        if len(semi_losers) == 2:
+            third_place_match = self.sim.simulate(
+                _profile(self.teams[semi_losers[0]], self.elo),
+                _profile(self.teams[semi_losers[1]], self.elo),
+                knockout=True,
+            )
+            knockout["THIRD_PLACE"] = third_place_match
+            third_place = third_place_match.winner
+            fourth_place = (
+                third_place_match.away
+                if third_place_match.winner == third_place_match.home
+                else third_place_match.home
+            )
         quarter_ids = self._previous_match_ids(*semi_ids)
         round_of_16_ids = self._previous_match_ids(*quarter_ids)
 
@@ -178,9 +209,14 @@ class TournamentEngine:
 
         return TournamentResult(
             group_tables=tables,
+            group_matches=group_matches,
             knockout=knockout,
             champion=champion,
             runner_up=runner_up,
+            third_place=third_place,
+            fourth_place=fourth_place,
+            third_place_match=third_place_match,
+            best_third_place=best_third_place,
             semi_finalists=sf,
             quarter_finalists=qf,
             round_of_16=r16,

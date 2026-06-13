@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 _FINISH_POSITION = {
     "champion": 1.0,
     "final": 2.0,      # lost the final
-    "semi": 3.5,       # 3rd/4th
+    "third": 3.0,
+    "fourth": 4.0,
+    "semi": 3.5,       # fallback for older tournament results
     "quarter": 6.5,    # 5th-8th
     "r16": 12.5,       # 9th-16th
     "group": 24.5,     # 17th-32nd
@@ -91,12 +93,18 @@ def _run_chunk(args) -> dict:
         reached_qf = set(res.quarter_finalists)
         reached_sf = set(res.semi_finalists)
         finalists = {res.champion, res.runner_up}
+        third_place = getattr(res, "third_place", None)
+        fourth_place = getattr(res, "fourth_place", None)
 
         for t in all_teams:
             if t == res.champion:
                 pos = "champion"
             elif t == res.runner_up:
                 pos = "final"
+            elif third_place and t == third_place:
+                pos = "third"
+            elif fourth_place and t == fourth_place:
+                pos = "fourth"
             elif t in reached_sf:
                 pos = "semi"
             elif t in reached_qf:
