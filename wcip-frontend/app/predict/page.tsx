@@ -5,8 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis,
+  ResponsiveContainer,
 } from "recharts";
 import { useTeams, useSimulateMatch, useMLPredict } from "@/lib/queries";
 import type { MatchPrediction, HybridPrediction } from "@/lib/types";
@@ -15,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 import { pct } from "@/lib/utils";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -389,6 +389,8 @@ export default function PredictPage() {
           Adjust injuries, form, and coaching to model any scenario.
         </p>
       </header>
+
+      <DataFreshnessStrip />
 
       <WinnerPredictionsSection compact />
 

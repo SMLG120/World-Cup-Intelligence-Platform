@@ -7,7 +7,7 @@ import type {
   TournamentResult, User, EloPoint, AdminAnalytics,
   HybridPrediction, MLModel, FeatureVector, QualifiedTeam,
   WC2026Groups, WC2026Simulation, TeamDetail, Player,
-  WorldCupWinnerPrediction,
+  WorldCupWinnerPrediction, DataFreshness, LatestEloSnapshot,
 } from "./types";
 
 function resolveApiBase() {
@@ -148,6 +148,14 @@ export const api = {
     request<Team[]>(`/teams${confederation ? `?confederation=${confederation}` : ""}`),
   team: (id: number) => request<Team>(`/teams/${id}`),
   eloHistory: (id: number) => request<EloPoint[]>(`/teams/${id}/elo-history`),
+  latestElo: (limit = 50) => request<LatestEloSnapshot>(`/ratings/elo/latest?limit=${limit}`),
+  teamEloSnapshotHistory: (id: number, limit = 100) =>
+    request<{ team_id: number; team_name: string; entries: LatestEloSnapshot["entries"] }>(
+      `/ratings/elo/history/${id}?limit=${limit}`
+    ),
+  fifaLatest: (limit = 50) => request<unknown>(`/rankings/fifa/latest?limit=${limit}`),
+  fifaHistory: (id: number, limit = 100) =>
+    request<unknown>(`/rankings/fifa/history/${id}?limit=${limit}`),
 
   // --- players ---
   players: (params?: { team_name?: string; q?: string; limit?: number }) => {
@@ -190,6 +198,11 @@ export const api = {
 
   // --- admin ---
   adminAnalytics: () => request<AdminAnalytics>("/admin/analytics", { auth: true }),
+  dataFreshness: () => request<DataFreshness>("/data/freshness"),
+  refreshElo: () => request<unknown>("/admin/data/refresh-elo", { method: "POST", auth: true }),
+  refreshFifaRankings: () =>
+    request<unknown>("/admin/data/refresh-fifa-rankings", { method: "POST", auth: true }),
+  refreshAllData: () => request<unknown>("/admin/data/refresh-all", { method: "POST", auth: true }),
 
   // --- ML predictions (Phase 2) ---
   mlPredict: (body: {
@@ -254,6 +267,17 @@ export const api = {
     return request<WorldCupWinnerPrediction[]>(
       `/world-cup/2026/winner-predictions?${params}`
     );
+  },
+
+  wc2026Predictions: (runs = 5000, seed?: number | null, deterministic = false) => {
+    const params = new URLSearchParams({ runs: String(runs), deterministic: String(deterministic) });
+    if (seed !== undefined && seed !== null) params.set("seed", String(seed));
+    return request<{
+      year: number;
+      prediction_type: string;
+      freshness: DataFreshness;
+      winner_predictions: WorldCupWinnerPrediction[];
+    }>(`/world-cup/2026/predictions?${params}`);
   },
 
   wc2026Schedule: () => request<unknown>("/world-cup/schedule?year=2026"),

@@ -7,12 +7,13 @@ from app.models.ranking import (FifaRankingEntry, FifaRankingSnapshot,  # noqa: 
                                 RankingSourceLog, TeamRanking)
 from app.models.simulation import (SavedScenario, SimKind, Simulation,  # noqa: F401
                                    SimStatus, SimulationRun)
-from app.models.team import EloHistory, Team  # noqa: F401
+from app.models.team import (EloHistory, EloRatingSnapshot, EloSourceLog,  # noqa: F401
+                             Team, TeamEloRating)
 from app.models.user import AuditLog, User, UserRole  # noqa: F401
 
 __all__ = [
     "User", "UserRole", "AuditLog",
-    "Team", "EloHistory",
+    "Team", "EloHistory", "EloRatingSnapshot", "TeamEloRating", "EloSourceLog",
     "Simulation", "SimulationRun", "SavedScenario", "SimStatus", "SimKind",
     "Player", "Coach", "PlayerRatingImport", "PlayerRatingRecord",
     "FifaRankingSnapshot", "FifaRankingEntry", "TeamRanking", "RankingSourceLog",

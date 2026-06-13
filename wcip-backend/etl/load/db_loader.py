@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.db.base import SessionLocal
 from app.models.match_result import MatchResult, QualifiedTeam
 from app.models.player import Coach, Player
+from etl.players.profiles import build_player_profile
 from etl.validation.schema import ValidatedMatch
 
 logger = logging.getLogger(__name__)
@@ -54,20 +55,35 @@ def load_match_results(records: Iterator[ValidatedMatch], batch_size: int = 500)
                 data_source="international_results",
             ))
             if len(batch) >= batch_size:
-                db.add_all(batch)
-                db.commit()
-                inserted += len(batch)
+                inserted += _commit_match_batch(db, batch)
                 logger.info("Loaded %d match results (running total: %d)", len(batch), inserted)
                 batch.clear()
 
         if batch:
-            db.add_all(batch)
-            db.commit()
-            inserted += len(batch)
+            inserted += _commit_match_batch(db, batch)
     finally:
         db.close()
     logger.info("Total match results loaded: %d", inserted)
     return inserted
+
+
+def _commit_match_batch(db: Session, batch: list[MatchResult]) -> int:
+    db.add_all(batch)
+    db.commit()
+    for row in batch:
+        if _should_update_live_ratings(row):
+            try:
+                from app.services.rating_update_service import update_ratings_after_match
+
+                update_ratings_after_match(row.id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Live Elo update failed for match %s: %s", row.id, exc)
+    return len(batch)
+
+
+def _should_update_live_ratings(row: MatchResult) -> bool:
+    tournament = (row.tournament or "").lower()
+    return row.match_date.year == 2026 and "world cup" in tournament
 
 
 def load_players(records: list[dict], team_name: str, data_source: str = "football-data") -> int:
@@ -130,6 +146,7 @@ def _update_player(player: Player, raw: dict, team_name: str, data_source: str) 
         player.injured = bool(raw["injured"])
     if "suspended" in raw:
         player.suspended = bool(raw["suspended"])
+    player.profile_description = build_player_profile(player)
 
 
 def load_qualified_teams(teams: list[dict], tournament_year: int = 2026) -> int:

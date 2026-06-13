@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { RefreshCw } from "lucide-react";
 import { useWorldCupWinnerPredictions } from "@/lib/queries";
 import type { ApiError } from "@/lib/api";
 import type { WorldCupWinnerPrediction } from "@/lib/types";
@@ -146,6 +147,7 @@ function PredictionTable({ rows }: { rows: WorldCupWinnerPrediction[] }) {
             <th className="py-3 pr-3 font-normal">Team</th>
             <th className="py-3 pr-3 font-normal">Group</th>
             <th className="py-3 pr-3 font-normal text-right">FIFA</th>
+            <th className="py-3 pr-3 font-normal text-right">Elo</th>
             <th className="py-3 pr-3 font-normal text-right">Champion</th>
             <th className="py-3 pr-3 font-normal text-right">Final</th>
             <th className="py-3 pr-3 font-normal text-right">Semi</th>
@@ -165,6 +167,7 @@ function PredictionTable({ rows }: { rows: WorldCupWinnerPrediction[] }) {
               </td>
               <td className="py-2 pr-3 text-muted">{row.group ?? "TBD"}</td>
               <td className="py-2 pr-3 text-right tnum">{row.fifa_rank}</td>
+              <td className="py-2 pr-3 text-right tnum">{row.elo_rating_used ? Math.round(row.elo_rating_used) : "n/a"}</td>
               <td className="py-2 pr-3 text-right tnum text-pitch">{pct(row.champion_probability)}</td>
               <td className="py-2 pr-3 text-right tnum">{pct(row.final_probability)}</td>
               <td className="py-2 pr-3 text-right tnum">{pct(row.semifinal_probability)}</td>
@@ -230,9 +233,15 @@ export function WinnerPredictionsSection({ compact = false }: { compact?: boolea
         <div>
           <p className="kicker mb-1">World Cup Winner Predictions</p>
           <h2 className="display text-2xl">2026 title forecast</h2>
+          {rows[0]?.data_snapshot_version && (
+            <p className="text-xs text-muted mt-1">
+              Snapshot <span className="tnum">{rows[0].data_snapshot_version}</span>
+            </p>
+          )}
         </div>
         <Button onClick={() => query.refetch()} disabled={query.isFetching} variant="outline" size="sm">
-          {query.isFetching ? "Refreshing…" : "Retry"}
+          <RefreshCw className={`h-3.5 w-3.5 ${query.isFetching ? "animate-spin" : ""}`} aria-hidden />
+          {query.isFetching ? "Refreshing" : "Update Predictions"}
         </Button>
       </div>
 

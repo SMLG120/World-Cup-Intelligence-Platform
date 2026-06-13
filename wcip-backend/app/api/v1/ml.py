@@ -145,6 +145,9 @@ def ml_models() -> List[Dict[str, Any]]:
                     "ensemble_weight": round(r.ensemble_weight, 4),
                     "training_samples": r.training_samples,
                     "feature_version": r.feature_version,
+                    "data_snapshot_version": r.data_snapshot_version,
+                    "calibration_status": r.calibration_status,
+                    "requires_recalibration": r.requires_recalibration,
                     "is_active": r.is_active,
                     "trained_at": r.trained_at.isoformat() if r.trained_at else None,
                 }

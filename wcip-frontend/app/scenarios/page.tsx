@@ -253,7 +253,7 @@ export default function ScenariosPage() {
         <p className="kicker mb-2">Scenario lab</p>
         <h1 className="display text-4xl">Compare what-ifs</h1>
         <p className="text-muted mt-2 max-w-2xl">
-          Configure up to three scenarios — adjust a nation's availability, morale, or form
+          Configure up to three scenarios — adjust a nation&apos;s availability, morale, or form
           — then run them side by side to see champion probability changes with impact charts.
         </p>
       </header>

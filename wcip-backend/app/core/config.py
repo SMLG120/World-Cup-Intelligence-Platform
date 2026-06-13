@@ -86,6 +86,8 @@ class Settings(BaseSettings):
     FOOTBALL_DATA_API_KEY: str = ""       # football-data.org free tier key
     API_FOOTBALL_KEY: str = ""
     FIFA_RANKING_SOURCE_URL: str = "https://inside.fifa.com/fifa-world-ranking/men"
+    ELO_RATING_SOURCE_URL: str = "https://www.eloratings.net/2026_World_Cup"
+    ELO_RATING_TSV_URL: str = "https://www.eloratings.net/World.tsv"
 
     # --- ML ---
     ML_MODELS_DIR: str = "models"
@@ -98,6 +100,19 @@ class Settings(BaseSettings):
     def _split_origins(cls, v):
         if isinstance(v, str):
             return [o.strip() for o in v.split(",") if o.strip()]
+        return v
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def _parse_debug(cls, v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            if normalized in {"1", "true", "yes", "y", "on", "debug", "dev", "development"}:
+                return True
+            if normalized in {"0", "false", "no", "n", "off", "release", "prod", "production"}:
+                return False
         return v
 
     @model_validator(mode="after")

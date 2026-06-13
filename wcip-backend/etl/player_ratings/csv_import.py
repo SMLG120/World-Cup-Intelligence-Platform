@@ -18,6 +18,7 @@ from sqlalchemy import delete, select
 
 from app.db.base import SessionLocal
 from app.models.player import Player, PlayerRatingImport, PlayerRatingRecord
+from etl.players.profiles import build_player_profile
 from etl.transform.normalize import canonical
 
 logger = logging.getLogger(__name__)
@@ -241,6 +242,7 @@ def _upsert_player(
     player.player_rating_version = source_version
     player.player_rating_updated_at = imported_at
     player.data_source = source_name
+    player.profile_description = build_player_profile(player)
     return player
 
 

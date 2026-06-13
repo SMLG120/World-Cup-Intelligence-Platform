@@ -25,14 +25,25 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,
 )
 
-# Periodic ETL refresh hook (wired up when a real data feed is added).
 celery_app.conf.beat_schedule = {
-    "refresh-data-every-6h": {
-        "task": "app.workers.tasks.refresh_data",
-        "schedule": 6 * 60 * 60,
+    "refresh-world-cup-results-every-3h": {
+        "task": "etl.refresh_world_cup_results",
+        "schedule": 3 * 60 * 60,
+    },
+    "refresh-elo-ratings-daily": {
+        "task": "etl.refresh_elo_ratings",
+        "schedule": 24 * 60 * 60,
     },
     "check-fifa-rankings-daily": {
-        "task": "etl.fifa_rankings_update",
+        "task": "etl.refresh_fifa_rankings",
         "schedule": 24 * 60 * 60,
+    },
+    "refresh-player-availability-daily": {
+        "task": "etl.refresh_player_availability",
+        "schedule": 24 * 60 * 60,
+    },
+    "refresh-prediction-cache-every-6h": {
+        "task": "etl.refresh_prediction_cache",
+        "schedule": 6 * 60 * 60,
     },
 }

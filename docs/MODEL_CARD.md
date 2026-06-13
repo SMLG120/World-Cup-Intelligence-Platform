@@ -115,7 +115,8 @@ team, so prediction requests do not crash when licensed player data is absent.
 stored FIFA ranking snapshot with `ranking_date <= match_date`. If no historical
 snapshot exists for that match date, `fifa_rank_diff` falls back to a neutral
 value rather than using the current ranking. Elo uses the same point-in-time
-pattern through `elo_history`.
+pattern through versioned `elo_rating_snapshots` / `team_elo_ratings`, then
+falls back to legacy `elo_history` only when no immutable snapshot exists.
 
 ---
 
@@ -224,6 +225,26 @@ the v1 feature count when a loaded model expects 17 inputs. Treat these models
 as baselines until official ranking snapshots and legal player-rating data are
 loaded and the full ensemble is retrained on `v2`.
 
+### Real-Time Data Snapshots
+
+Current predictions include a data snapshot version composed from the active Elo
+snapshot, FIFA ranking snapshot, feature version, and model version. The runtime
+uses latest validated snapshots for future World Cup predictions and point-in-time
+snapshots for historical training rows.
+
+| Data dimension | Current prediction behavior | Historical training behavior |
+|---|---|---|
+| Elo ratings | Latest current `elo_rating_snapshots` row | Latest snapshot with `rating_date <= match_date` |
+| FIFA rankings | Latest current `fifa_ranking_snapshots` row | Latest snapshot with `ranking_date <= match_date` |
+| Player data | Latest imported legal CSV / API records | Available stored player records; incomplete data stays neutral |
+| Match results | Latest `match_results` rows and refreshed features | Rows available up to the match date |
+
+When match results are inserted, the rating update service creates a match-specific
+Elo snapshot, refreshes affected features, and invalidates prediction caches. When
+new FIFA/Elo/player data changes materially, `python -m ml.retrain_if_needed --apply`
+marks active models as requiring recalibration or retraining without retraining on
+every small source change.
+
 ---
 
 ## Model Selection Process
@@ -302,7 +323,8 @@ missing historical periods use neutral ranking values to avoid data leakage.
 | Trigger | Command | Description |
 |---|---|---|
 | Admin API | `POST /api/v1/ml/retrain {"model": "all"}` | Incremental retrain on new data |
-| Ranking monitor | `check_fifa_ranking_update(trigger_retraining=True)` | Retrain after material FIFA ranking movement |
+| Ranking monitor | `check_fifa_ranking_update(trigger_retraining=True)` | Mark/retrain after material FIFA ranking movement |
+| Data freshness monitor | `python -m ml.retrain_if_needed --apply` | Mark active models when Elo, FIFA, or player-data deltas exceed thresholds |
 | Manual | `python -m ml.train --model all` | Full retrain from CLI |
 | Full refresh | `python -m ml.train --model all --full-refresh` | Re-reads all history |
 

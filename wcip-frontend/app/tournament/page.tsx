@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChampionChart, ChampionLegend } from "@/components/champion-chart";
 import { Bracket } from "@/components/bracket";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 import { pct, ordinal } from "@/lib/utils";
 
 // Sync endpoint caps at 2000 runs; larger runs use the authed async /simulations.
@@ -33,6 +34,8 @@ export default function TournamentPage() {
           times over and aggregate how often each nation reaches each round.
         </p>
       </header>
+
+      <DataFreshnessStrip compact />
 
       <WinnerPredictionsSection compact />
 

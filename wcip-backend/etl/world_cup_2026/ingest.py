@@ -20,6 +20,7 @@ from app.db.base import SessionLocal
 from app.models.match_result import QualifiedTeam
 from app.models.player import Coach, Player
 from app.models.team import EloHistory, Team
+from etl.players.profiles import build_player_profile
 from etl.transform.normalize import canonical
 from etl.world_cup_2026.seed_data import (
     DATA_SOURCE_NAME,
@@ -400,6 +401,7 @@ def _upsert_players(
         player.injury_notes = record.injury_notes
         player.fitness_score = record.fitness_score
         player.recent_form_score = record.recent_form_score
+        player.profile_description = build_player_profile(player)
         player.updated_at = now
 
     return {"players_inserted": inserted, "players_updated": updated, "players_skipped": skipped}

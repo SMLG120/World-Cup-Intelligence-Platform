@@ -6,13 +6,14 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell,
+  ResponsiveContainer, Tooltip,
 } from "recharts";
 import { usePlayer, useWC2026Players } from "@/lib/queries";
 import type { Player } from "@/lib/types";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 
 // ── Stat box ──────────────────────────────────────────────────────────────────
 
@@ -185,6 +186,16 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
       </motion.header>
+
+      <DataFreshnessStrip compact />
+
+      {player.profile_description && (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-muted leading-relaxed">{player.profile_description}</p>
+          </CardBody>
+        </Card>
+      )}
 
       {isPlaceholder && (
         <Card>

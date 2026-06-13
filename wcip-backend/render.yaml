@@ -43,6 +43,12 @@ services:
         sync: false   # set to your Vercel domain
       - key: CORS_ORIGINS
         sync: false   # set to your Vercel domain
+      - key: FIFA_RANKING_SOURCE_URL
+        value: https://inside.fifa.com/fifa-world-ranking/men
+      - key: ELO_RATING_SOURCE_URL
+        value: https://www.eloratings.net/2026_World_Cup
+      - key: ELO_RATING_TSV_URL
+        value: https://www.eloratings.net/World.tsv
     # Apply migrations before the web process starts.
     preDeployCommand: alembic upgrade head
 
@@ -76,6 +82,12 @@ services:
           name: wcip-redis
           type: redis
           property: connectionString
+      - key: FIFA_RANKING_SOURCE_URL
+        value: https://inside.fifa.com/fifa-world-ranking/men
+      - key: ELO_RATING_SOURCE_URL
+        value: https://www.eloratings.net/2026_World_Cup
+      - key: ELO_RATING_TSV_URL
+        value: https://www.eloratings.net/World.tsv
 
   - type: redis
     name: wcip-redis

@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ml.features import FEATURE_NAMES, FeatureVector, build_feature_vector
+from ml.features import FEATURE_NAMES, FeatureVector, build_feature_metadata, build_feature_vector
 from ml.predict import predict_all_models, predict_with_model
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,7 @@ class HybridPrediction:
     explanation: Optional[PredictionExplanation] = None
     model_weights_used: Dict[str, float] = field(default_factory=dict)
     feature_values_used: Dict[str, float] = field(default_factory=dict)
+    data_snapshot: Dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -100,6 +101,7 @@ class HybridPrediction:
                 key: round(float(value), 4)
                 for key, value in self.feature_values_used.items()
             },
+            "data_snapshot": self.data_snapshot,
             "explanation": _explanation_to_dict(self.explanation),
         }
 
@@ -425,6 +427,7 @@ def predict_hybrid(
         home_overrides=home_overrides,
         away_overrides=away_overrides,
     )
+    data_snapshot = build_feature_metadata(home_team, away_team, match_date)
 
     # 2. Statistical prediction
     stat_outcome, home_xg, away_xg = _statistical_prediction(
@@ -480,6 +483,7 @@ def predict_hybrid(
             name: float(fv.features[idx])
             for idx, name in enumerate(FEATURE_NAMES)
         },
+        data_snapshot=data_snapshot,
     )
 
 

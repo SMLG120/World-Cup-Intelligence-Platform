@@ -23,6 +23,7 @@ The important flow is:
 ```text
 Raw football data
   -> ETL extract/transform/validate/load
+  -> versioned Elo rating snapshots
   -> versioned FIFA ranking snapshots
   -> SQLite or Postgres tables
   -> feature engineering
@@ -63,7 +64,9 @@ Step by step:
 2. `etl/transform/normalize.py` canonicalizes team names.
 3. `etl/validation/schema.py` rejects malformed matches.
 4. `etl/load/db_loader.py` upserts rows into `match_results`.
-5. `run_elo_update()` refreshes the current display Elo values in `teams.elo`.
+5. `run_elo_update()` fetches World Football Elo data, stores an immutable
+   snapshot in `elo_rating_snapshots` / `team_elo_ratings`, appends compatible
+   `elo_history` rows, and refreshes `teams.elo` as a display cache.
 6. `run_fifa_rankings_update()` fetches the latest official FIFA ranking
    publication, validates it, stores it as a timestamped snapshot, and refreshes
    `teams.fifa_rank` as a display cache.
@@ -116,11 +119,68 @@ cd wcip-backend
 python -c "from etl.monitoring.ranking_monitor import check_fifa_ranking_update; print(check_fifa_ranking_update(force_refresh=True, trigger_retraining=True))"
 ```
 
-The Celery beat scheduler also runs `fifa_rankings_update` daily. Material
+The Celery beat scheduler also runs `etl.refresh_fifa_rankings` daily. Material
 changes are defined as top-10 movement, a rank delta of at least 5 inside the top
 50, or a points delta of at least 25.
 
-### 4. WC2026 Seed ETL
+### 4. Real-Time Elo, FIFA, Match, And Player Refresh
+
+Real-time refresh code extends the existing ETL architecture instead of replacing
+it.
+
+Key files:
+
+- `wcip-backend/etl/elo/` — World Football Elo extract, transform, validate, load
+- `wcip-backend/etl/fifa_rankings/` — dedicated FIFA ranking ETL package wrappers
+- `wcip-backend/etl/players/` — legal CSV player import/profile helpers
+- `wcip-backend/app/services/data_refresh_service.py` — refresh orchestration
+- `wcip-backend/app/services/rating_update_service.py` — idempotent Elo update after match result changes
+- `wcip-backend/ml/validate_features.py` — feature shape/NaN/inf validation
+- `wcip-backend/ml/retrain_if_needed.py` — recalibration trigger decision script
+
+Step by step:
+
+1. Elo refresh tries `https://www.eloratings.net/2026_World_Cup`, then
+   `https://www.eloratings.net/World.tsv`, then the local embedded fallback.
+2. The loader stores each Elo ingest as an immutable `elo_rating_snapshots` row
+   and one `team_elo_ratings` row per team.
+3. FIFA ranking refresh keeps using the official FIFA men's ranking source and
+   stores immutable snapshots.
+4. Match result ingestion triggers `update_ratings_after_match(match_id)` for
+   2026 World Cup result rows. Reprocessing the same match result is idempotent.
+5. Player data is imported from legal/manual CSV sources only. Generated player
+   profile text is based only on stored fields and labels incomplete records.
+6. `/api/v1/data/freshness` exposes the latest Elo, FIFA, match, player, model,
+   feature, and snapshot metadata.
+7. Admin users can call:
+   - `POST /api/v1/admin/data/refresh-elo`
+   - `POST /api/v1/admin/data/refresh-fifa-rankings`
+   - `POST /api/v1/admin/data/refresh-all`
+8. The frontend displays freshness indicators and admin refresh controls on the
+   main prediction, simulation, team, player, and model pages.
+
+Scheduled Celery tasks:
+
+```text
+etl.refresh_elo_ratings
+etl.refresh_fifa_rankings
+etl.refresh_world_cup_results
+etl.refresh_player_availability
+etl.refresh_prediction_cache
+```
+
+Manual validation:
+
+```bash
+cd wcip-backend
+python -m ml.validate_features
+python -m ml.retrain_if_needed --material-ranking-changes 5 --apply
+curl http://localhost:8000/api/v1/data/freshness
+curl http://localhost:8000/api/v1/ratings/elo/latest?limit=10
+curl http://localhost:8000/api/v1/rankings/fifa/latest?limit=10
+```
+
+### 5. WC2026 Seed ETL
 
 The World Cup 2026 seed pipeline is isolated from the generic football-data ETL.
 That makes tournament roster updates easier and keeps API-Football snapshots from
@@ -212,7 +272,7 @@ The normalizer maps known variants such as `Czech Republic` to `Czechia`, so the
 database stays consistent across historical results, API payloads, and frontend
 selectors.
 
-### 5. Feature Engineering And ML
+### 6. Feature Engineering And ML
 
 Feature generation lives in `wcip-backend/ml/features.py`.
 
@@ -307,12 +367,15 @@ The frontend is a Next.js app in `wcip-frontend`.
 2. Start the frontend at `http://localhost:3000`.
 3. Open the frontend.
 4. Use the navigation bar to choose a workflow.
-5. Pick teams from selectors populated by `GET /api/v1/teams`.
-6. Adjust sliders or scenario controls when available.
-7. Submit the form.
-8. The frontend calls the relevant backend endpoint.
-9. Results render as probabilities, cards, charts, or bracket views.
-10. If logged in, users can save simulations and revisit them later.
+5. Check the freshness strip for last Elo, FIFA ranking, match, player, model,
+   feature, and snapshot updates.
+6. Pick teams from selectors populated by `GET /api/v1/teams`.
+7. Adjust sliders or scenario controls when available.
+8. Submit the form.
+9. The frontend calls the relevant backend endpoint.
+10. Results render as probabilities, cards, charts, or bracket views.
+11. Admin users see a `Refresh Data` button that triggers global data refresh.
+12. If logged in, users can save simulations and revisit them later.
 
 ## API Map
 
@@ -347,10 +410,17 @@ All backend API routes use the `/api/v1` prefix.
 | `POST` | `/ml/train` | Trigger model training |
 | `POST` | `/ml/retrain` | Trigger retraining |
 | `POST` | `/ml/etl/run` | Trigger the ETL pipeline |
+| `GET` | `/ratings/elo/latest` | Current stored Elo snapshot |
+| `GET` | `/ratings/elo/history/{team_id}` | Versioned Elo history for one team |
 | `GET` | `/rankings/fifa/latest` | Current stored FIFA ranking snapshot |
+| `GET` | `/rankings/fifa/history/{team_id}` | Versioned FIFA ranking history for one team |
 | `GET` | `/rankings/fifa/snapshots` | List stored FIFA ranking snapshots |
 | `GET` | `/rankings/fifa/snapshots/{ranking_id}` | Fetch one historical ranking snapshot |
 | `POST` | `/rankings/fifa/refresh` | Admin ranking refresh and optional retrain trigger |
+| `GET` | `/data/freshness` | Elo, FIFA, match, player, model, and feature freshness |
+| `POST` | `/admin/data/refresh-elo` | Admin-only Elo refresh |
+| `POST` | `/admin/data/refresh-fifa-rankings` | Admin-only FIFA ranking refresh |
+| `POST` | `/admin/data/refresh-all` | Admin-only global refresh |
 | `GET` | `/world-cup/qualified-teams` | WC2026 qualified-team list |
 | `GET` | `/world-cup/groups` | WC2026 groups or pending draw status |
 | `GET` | `/world-cup/bracket` | WC2026 knockout bracket |
@@ -358,6 +428,8 @@ All backend API routes use the `/api/v1` prefix.
 | `GET` | `/world-cup/schedule` | WC2026 schedule metadata |
 | `GET` | `/world-cup/teams/{team_name}` | WC2026 team, squad, and coach detail |
 | `GET` | `/world-cup/players/{team_name}` | WC2026 squad list |
+| `GET` | `/world-cup/2026/predictions` | WC2026 prediction bundle with freshness |
+| `GET` | `/world_cup/2026/winner-predictions` | Underscore alias for winner predictions |
 | `GET` | `/health` | Backend health check |
 
 Interactive API docs are available at `http://localhost:8000/docs` when the
@@ -393,6 +465,9 @@ JWT_REFRESH_SECRET_KEY=replace-with-generated-local-refresh-secret
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ETL_AUTO_RUN_ON_STARTUP=false
 FOOTBALL_DATA_API_KEY=
+FIFA_RANKING_SOURCE_URL=https://inside.fifa.com/fifa-world-ranking/men
+ELO_RATING_SOURCE_URL=https://www.eloratings.net/2026_World_Cup
+ELO_RATING_TSV_URL=https://www.eloratings.net/World.tsv
 ```
 
 `ETL_AUTO_RUN_ON_STARTUP` is reserved for heavier external refresh jobs. The

@@ -44,11 +44,8 @@ def run_simulation(self, simulation_id: int) -> dict:
 
 @celery_app.task(name="app.workers.tasks.refresh_data")
 def refresh_data() -> dict:
-    """Scheduled ETL refresh hook.
+    """Compatibility task that runs the real refresh orchestrator."""
+    from app.services.data_refresh_service import refresh_all_data
 
-    In a full build this pulls fixtures/results from Football-Data.org /
-    StatsBomb, recomputes Elo, and updates team feature multipliers. Stubbed
-    here to keep the worker self-contained.
-    """
-    logger.info("refresh_data tick (no data feed configured)")
-    return {"status": "noop", "reason": "no data feed configured"}
+    logger.info("refresh_data tick")
+    return refresh_all_data()

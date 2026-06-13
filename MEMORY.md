@@ -49,3 +49,23 @@ Production secrets must be generated outside the repo and configured through
 Render, Vercel, or another secret manager. Do not reuse generated local secrets
 in production.
 
+## Real-Time Data Pipeline
+
+- Elo is versioned through `elo_rating_snapshots`, `team_elo_ratings`, and
+  `elo_source_logs`. `teams.elo` remains only a current display/cache value.
+- FIFA rankings remain versioned through `fifa_ranking_snapshots`,
+  `fifa_ranking_entries`, `team_rankings`, and `ranking_source_logs`.
+  `teams.fifa_rank` remains only a current display/cache value.
+- Public freshness metadata is served by `GET /api/v1/data/freshness`.
+- Public Elo APIs are:
+  - `GET /api/v1/ratings/elo/latest`
+  - `GET /api/v1/ratings/elo/history/{team_id}`
+- Admin refresh APIs are:
+  - `POST /api/v1/admin/data/refresh-elo`
+  - `POST /api/v1/admin/data/refresh-fifa-rankings`
+  - `POST /api/v1/admin/data/refresh-all`
+- Player profiles are generated only from stored fields. Sparse rows must be
+  labelled incomplete rather than filled with unsupported scouting claims.
+- `ml.validate_features` checks feature count/order and NaN/inf safety.
+- `ml.retrain_if_needed` marks active model registry rows for recalibration only
+  when data changes cross configured thresholds.

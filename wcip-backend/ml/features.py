@@ -118,15 +118,39 @@ def _get_team_elo(team_name: str, as_of_date: date | None = None) -> float:
     try:
         from sqlalchemy import select
         from app.db.base import SessionLocal
-        from app.models.team import EloHistory, Team
+        from app.models.team import EloHistory, EloRatingSnapshot, Team, TeamEloRating
+        from etl.transform.normalize import canonical
+        canonical_name = canonical(team_name)
         db = SessionLocal()
         try:
+            snapshot_query = select(EloRatingSnapshot)
+            if as_of_date is not None:
+                snapshot_query = snapshot_query.where(EloRatingSnapshot.rating_date <= as_of_date)
+            else:
+                snapshot_query = snapshot_query.where(EloRatingSnapshot.is_current.is_(True))
+            snapshot = db.scalar(
+                snapshot_query
+                .order_by(EloRatingSnapshot.rating_date.desc(), EloRatingSnapshot.id.desc())
+                .limit(1)
+            )
+            if snapshot:
+                rating = db.scalar(
+                    select(TeamEloRating)
+                    .where(
+                        TeamEloRating.snapshot_id == snapshot.id,
+                        TeamEloRating.team_name == canonical_name,
+                    )
+                    .limit(1)
+                )
+                if rating:
+                    return rating.rating
+
             asof = _asof_datetime(as_of_date)
             if asof is not None:
                 historical = db.scalar(
                     select(EloHistory)
                     .join(Team, EloHistory.team_id == Team.id)
-                    .where(Team.name == team_name, EloHistory.recorded_at <= asof)
+                    .where(Team.name == canonical_name, EloHistory.recorded_at <= asof)
                     .order_by(EloHistory.recorded_at.desc(), EloHistory.id.desc())
                     .limit(1)
                 )
@@ -135,12 +159,121 @@ def _get_team_elo(team_name: str, as_of_date: date | None = None) -> float:
                 if _is_historical(as_of_date):
                     return 1500.0
 
-            t = db.scalar(select(Team).where(Team.name == team_name))
+            t = db.scalar(select(Team).where(Team.name == canonical_name))
             return t.elo if t else 1500.0
         finally:
             db.close()
     except Exception:
         return 1500.0
+
+
+def _get_latest_elo_snapshot_meta(as_of_date: date | None = None) -> dict:
+    try:
+        from sqlalchemy import select
+        from app.db.base import SessionLocal
+        from app.models.team import EloRatingSnapshot
+
+        db = SessionLocal()
+        try:
+            query = select(EloRatingSnapshot)
+            if as_of_date is not None:
+                query = query.where(EloRatingSnapshot.rating_date <= as_of_date)
+            else:
+                query = query.where(EloRatingSnapshot.is_current.is_(True))
+            snapshot = db.scalar(
+                query.order_by(EloRatingSnapshot.rating_date.desc(), EloRatingSnapshot.id.desc()).limit(1)
+            )
+            if not snapshot:
+                return {}
+            return {
+                "snapshot_id": snapshot.snapshot_id,
+                "data_version": snapshot.data_version,
+                "rating_date": snapshot.rating_date.isoformat(),
+                "created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+                "source_url": snapshot.source_url,
+            }
+        finally:
+            db.close()
+    except Exception:
+        return {}
+
+
+def _get_latest_fifa_snapshot_meta(as_of_date: date | None = None) -> dict:
+    try:
+        from sqlalchemy import select
+        from app.db.base import SessionLocal
+        from app.models.ranking import FifaRankingSnapshot
+
+        db = SessionLocal()
+        try:
+            query = select(FifaRankingSnapshot)
+            if as_of_date is not None:
+                query = query.where(FifaRankingSnapshot.ranking_date <= as_of_date)
+            else:
+                query = query.where(FifaRankingSnapshot.is_current.is_(True))
+            snapshot = db.scalar(
+                query.order_by(FifaRankingSnapshot.ranking_date.desc(), FifaRankingSnapshot.id.desc()).limit(1)
+            )
+            if not snapshot:
+                return {}
+            return {
+                "ranking_id": snapshot.ranking_id,
+                "data_version": snapshot.ranking_id,
+                "ranking_date": snapshot.ranking_date.isoformat(),
+                "created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+                "source_url": snapshot.source_url,
+            }
+        finally:
+            db.close()
+    except Exception:
+        return {}
+
+
+def _get_player_data_freshness(team_names: list[str]) -> str | None:
+    try:
+        from sqlalchemy import func, select
+        from app.db.base import SessionLocal
+        from app.models.player import Player
+
+        db = SessionLocal()
+        try:
+            latest = db.scalar(
+                select(func.max(Player.updated_at)).where(Player.team_name.in_(team_names))
+            )
+            return latest.isoformat() if latest else None
+        finally:
+            db.close()
+    except Exception:
+        return None
+
+
+def build_feature_metadata(
+    home_team: str,
+    away_team: str,
+    match_date: date | None = None,
+) -> dict:
+    if match_date is None:
+        match_date = date.today()
+    elo_meta = _get_latest_elo_snapshot_meta(match_date)
+    fifa_meta = _get_latest_fifa_snapshot_meta(match_date)
+    return {
+        "home_elo_rating_used": _get_team_elo(home_team, match_date),
+        "away_elo_rating_used": _get_team_elo(away_team, match_date),
+        "home_fifa_ranking_used": _get_team_fifa_rank(home_team, match_date),
+        "away_fifa_ranking_used": _get_team_fifa_rank(away_team, match_date),
+        "elo_snapshot": elo_meta,
+        "fifa_snapshot": fifa_meta,
+        "player_data_freshness": _get_player_data_freshness([home_team, away_team]),
+        "feature_version": FEATURE_VERSION,
+        "data_snapshot_version": "|".join(
+            part for part in [
+                f"elo:{elo_meta.get('data_version')}" if elo_meta else None,
+                f"fifa:{fifa_meta.get('data_version')}" if fifa_meta else None,
+                f"feature:{FEATURE_VERSION}",
+            ]
+            if part
+        ),
+    }
 
 
 def _get_team_fifa_rank(team_name: str, as_of_date: date | None = None) -> int:
@@ -149,6 +282,8 @@ def _get_team_fifa_rank(team_name: str, as_of_date: date | None = None) -> int:
         from app.db.base import SessionLocal
         from app.models.ranking import FifaRankingEntry, FifaRankingSnapshot
         from app.models.team import Team
+        from etl.transform.normalize import canonical
+        canonical_name = canonical(team_name)
         db = SessionLocal()
         try:
             snapshot = db.scalar(
@@ -164,7 +299,7 @@ def _get_team_fifa_rank(team_name: str, as_of_date: date | None = None) -> int:
                     select(FifaRankingEntry)
                     .where(
                         FifaRankingEntry.snapshot_id == snapshot.id,
-                        FifaRankingEntry.team_name == team_name,
+                        FifaRankingEntry.team_name == canonical_name,
                     )
                     .limit(1)
                 )
@@ -173,7 +308,7 @@ def _get_team_fifa_rank(team_name: str, as_of_date: date | None = None) -> int:
             if _is_historical(as_of_date):
                 return 100
 
-            t = db.scalar(select(Team).where(Team.name == team_name))
+            t = db.scalar(select(Team).where(Team.name == canonical_name))
             return t.fifa_rank if t else 100
         finally:
             db.close()

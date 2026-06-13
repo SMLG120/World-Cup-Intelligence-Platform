@@ -41,6 +41,9 @@ services:
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      FIFA_RANKING_SOURCE_URL: ${FIFA_RANKING_SOURCE_URL:-https://inside.fifa.com/fifa-world-ranking/men}
+      ELO_RATING_SOURCE_URL: ${ELO_RATING_SOURCE_URL:-https://www.eloratings.net/2026_World_Cup}
+      ELO_RATING_TSV_URL: ${ELO_RATING_TSV_URL:-https://www.eloratings.net/World.tsv}
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -61,6 +64,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in wcip-backend/.env}
       JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY:?Set JWT_REFRESH_SECRET_KEY in wcip-backend/.env}
+      FIFA_RANKING_SOURCE_URL: ${FIFA_RANKING_SOURCE_URL:-https://inside.fifa.com/fifa-world-ranking/men}
+      ELO_RATING_SOURCE_URL: ${ELO_RATING_SOURCE_URL:-https://www.eloratings.net/2026_World_Cup}
+      ELO_RATING_TSV_URL: ${ELO_RATING_TSV_URL:-https://www.eloratings.net/World.tsv}
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -76,6 +82,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in wcip-backend/.env}
       JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY:?Set JWT_REFRESH_SECRET_KEY in wcip-backend/.env}
+      FIFA_RANKING_SOURCE_URL: ${FIFA_RANKING_SOURCE_URL:-https://inside.fifa.com/fifa-world-ranking/men}
+      ELO_RATING_SOURCE_URL: ${ELO_RATING_SOURCE_URL:-https://www.eloratings.net/2026_World_Cup}
+      ELO_RATING_TSV_URL: ${ELO_RATING_TSV_URL:-https://www.eloratings.net/World.tsv}
     depends_on:
       redis: { condition: service_healthy }
     command: celery -A app.workers.celery_app.celery_app beat --loglevel=info

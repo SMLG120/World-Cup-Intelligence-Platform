@@ -4,8 +4,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
-  LineChart, Line, ReferenceLine, ErrorBar,
+  ReferenceLine,
 } from "recharts";
 import { useTeams, useMLPredict } from "@/lib/queries";
 import type { HybridPrediction } from "@/lib/types";
@@ -180,8 +179,6 @@ function PredictionDiffChart({
   home: string;
   prediction: HybridPrediction;
 }) {
-  const ensembleHomeWin = prediction.ensemble.home_win * 100;
-
   const data = Object.entries(prediction.ml_predictions).map(([k, v]) => ({
     model: MODEL_LABELS[k] ?? k,
     diff: parseFloat(((v.home_win - prediction.ensemble.home_win) * 100).toFixed(2)),

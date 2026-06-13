@@ -1,18 +1,18 @@
 "use client";
 
-import { use, useState } from "react";
+import { use } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  LineChart, Line, CartesianGrid,
+  CartesianGrid,
 } from "recharts";
 import { useTeam, useEloHistory, useWC2026TeamDetail, useWC2026Players } from "@/lib/queries";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { pct } from "@/lib/utils";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 
 // ── Stat box ──────────────────────────────────────────────────────────────────
 
@@ -257,6 +257,8 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
           </Link>
         </div>
       </motion.header>
+
+      <DataFreshnessStrip compact />
 
       {/* Core stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

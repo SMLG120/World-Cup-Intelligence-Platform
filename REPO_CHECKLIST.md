@@ -10,20 +10,26 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `etl/pipeline.py` — orchestrator with ETL state file for incremental runs
 - ✅ `etl/extract/international_results.py` — martj42 CSV download + caching + parse (49K rows)
 - ✅ `etl/extract/elo_ratings.py` — eloratings.net TSV fetch + embedded fallback snapshot
+- ✅ `etl/elo/` — versioned World Football Elo snapshots, validation, loader, source logs
 - ✅ `etl/extract/football_data.py` — football-data.org API client (rate-limited 6.5s)
 - ✅ `etl/extract/fifa_rankings.py` — official FIFA ranking snapshot fetch + validation
+- ✅ `etl/fifa_rankings/` — dedicated FIFA ranking ETL package around the canonical official snapshot loader
+- ✅ `etl/players/` — legal CSV player import wrapper + generated profile text
 - ✅ `etl/load/ranking_loader.py` — historical ranking snapshot loader
 - ✅ `etl/monitoring/ranking_monitor.py` — ranking change detection + retraining trigger
 - ✅ `etl/transform/normalize.py` — canonical name normalization (60+ variant spellings)
 - ✅ `etl/validation/schema.py` — ValidatedMatch dataclass, business-rule checks
 - ✅ `etl/load/db_loader.py` — idempotent upsert loaders (batch 500, in-run dedup)
-- ✅ `etl/schedulers/celery_tasks.py` — daily results, weekly Elo, daily FIFA ranking Celery tasks
+- ✅ `etl/schedulers/celery_tasks.py` — scheduled Elo, FIFA, results, player availability, and cache refresh tasks
 
 ### Database Tables (19 total)
 - ✅ `users` — accounts, roles, refresh tokens
 - ✅ `audit_logs` — admin audit trail
 - ✅ `teams` — team metadata, Elo, FIFA rank, confederation
 - ✅ `elo_history` — Elo rating timeseries per team
+- ✅ `elo_rating_snapshots` — immutable World Football Elo ingestion snapshots
+- ✅ `team_elo_ratings` — team Elo rating/rank rows per snapshot
+- ✅ `elo_source_logs` — Elo fetch/load audit trail
 - ✅ `simulations` — saved tournament simulation records
 - ✅ `simulation_runs` — per-run results (async Celery runs)
 - ✅ `saved_scenarios` — user-saved scenario configurations
@@ -49,7 +55,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
   coaches, prediction readiness, and tournament placement
 - ✅ FIFA ranking versioning / snapshot tagging
 - ✅ Ranking source logging for fetch/load traceability
+- ✅ Elo source logging for fetch/load traceability
 - ✅ Legal CSV player-rating import with validation and versioning
+- ✅ Generated player profiles from supported fields only; incomplete rows labelled
 - 📋 Historical FIFA ranking backfill before first snapshot ingestion date
 - 📋 Broader data versioning for non-ranking external sources
 - 📋 StatsBomb Open Data integration (xG, shot-level data)
@@ -65,7 +73,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `build_feature_matrix_from_db()` — batch matrix for training (25K+ samples from 2000+)
 - ✅ `persist_features()` — saves computed vector to `match_features` table
 - ✅ Point-in-time FIFA ranking lookup prevents current-rank leakage into historical rows
-- ✅ Point-in-time Elo lookup uses `elo_history` or neutral fallback for historical rows
+- ✅ Point-in-time Elo lookup uses `team_elo_ratings`, then `elo_history`, then neutral fallback for historical rows
 - ✅ Player rating, unit strength, squad depth, form, availability, caps, goals, and weighted player-strength features
 
 ### Models
@@ -80,6 +88,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `ml/evaluate.py` — cross-validation + calibration reports
 - ✅ `ml/predict.py` — `lru_cache` model loading, per-model inference
 - ✅ `ml/retrain.py` — incremental retrain + cache invalidation
+- ✅ `ml/validate_features.py` — feature order/shape/NaN/inf validation report
+- ✅ `ml/retrain_if_needed.py` — data-change threshold workflow for recalibration decisions
 - ✅ Model versioning (`v{YYYYMMDD}`) + `is_active` flag in registry
 - ✅ Ensemble weight auto-update on each retrain (inverse log-loss, normalised)
 
@@ -96,7 +106,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ Feature-magnitude fallback when model unavailable
 
 ### Model Registry
-- ✅ `MLModelRecord` ORM — accuracy, F1, Brier, log-loss, calibration, ensemble_weight, training_samples, feature_version
+- ✅ `MLModelRecord` ORM — accuracy, F1, Brier, log-loss, calibration, ensemble_weight, training_samples, feature_version, data_snapshot_version, recalibration status
 - ✅ Historical model versions retained with `is_active` flag
 - 📋 Experiment tracking integration (MLflow / W&B)
 
@@ -150,6 +160,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /teams/{id}` — team detail
 - ✅ `GET /teams/{id}/stats` — aggregated statistics
 - ✅ `GET /teams/{id}/elo-history` — Elo timeseries
+- ✅ `GET /ratings/elo/latest` — current versioned Elo snapshot
+- ✅ `GET /ratings/elo/history/{team_id}` — versioned Elo records for a team
 - ✅ `GET /players` — registry with team/search filters
 - ✅ `GET /players/{id}` — player detail
 
@@ -178,10 +190,14 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /ml/explanations` — SHAP explanation
 - ✅ `POST /ml/etl/run` — trigger ETL (admin, async)
 - ✅ `GET /world-cup/2026/winner-predictions` — ranked WC2026 winner predictions
+- ✅ `GET /world-cup/2026/predictions` — prediction bundle with freshness metadata
+- ✅ `/world_cup/2026/*` — underscore compatibility aliases
 - ✅ `GET /rankings/fifa/latest` — current stored FIFA ranking snapshot
+- ✅ `GET /rankings/fifa/history/{team_id}` — FIFA ranking history for a team
 - ✅ `GET /rankings/fifa/snapshots` — list stored ranking snapshots
 - ✅ `GET /rankings/fifa/snapshots/{ranking_id}` — historical ranking snapshot
 - ✅ `POST /rankings/fifa/refresh` — admin refresh + optional retraining trigger
+- ✅ `GET /data/freshness` — current data/model/feature freshness metadata
 
 ### World Cup 2026
 - ✅ `GET /world-cup/qualified-teams` — qualification list
@@ -194,6 +210,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 
 ### Admin
 - ✅ `GET /admin/analytics` — usage metrics
+- ✅ `POST /admin/data/refresh-elo` — admin-only Elo refresh
+- ✅ `POST /admin/data/refresh-fifa-rankings` — admin-only FIFA ranking refresh
+- ✅ `POST /admin/data/refresh-all` — admin-only global refresh
 - ✅ `GET /health` — liveness probe
 
 ---
@@ -217,12 +236,14 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `components/match-predictor.tsx` — team pickers + modifiers
 - ✅ `components/champion-chart.tsx` — champion probability chart (Recharts)
 - ✅ `components/bracket.tsx` — animated knockout bracket
+- ✅ `components/data-freshness.tsx` — freshness strip with admin refresh controls
 
 ### Pages
 - ✅ `/dashboard` — overview, top contenders, recent simulations
 - ✅ `/wc2026` — qualified teams, official groups, Monte Carlo simulation
 - ✅ `components/winner-predictions-section.tsx` — winner prediction table and charts
 - ✅ Winner prediction sections on `/dashboard`, `/wc2026`, `/world-cup`, `/tournament`, `/predict`
+- ✅ Freshness indicators on `/`, `/dashboard`, `/wc2026`, `/predict`, `/simulate`, `/tournament`, `/teams`, `/team/[id]`, `/player/[id]`, `/models`
 - ✅ `/compare` — statistical vs all 5 ML models vs ensemble, side-by-side
 - ✅ `/player-lab` — load squads, toggle injuries/suspensions, override form/coach
 - ✅ `/models` — model metrics, ensemble weights, feature vector explorer

@@ -213,8 +213,6 @@ export default function WorldCupPage() {
     sim.mutate({ runs: simRuns });
   }
 
-  const loading = teamsLoading || groupsLoading;
-
   return (
     <div className="space-y-8">
       {/* ── Header ── */}
@@ -449,7 +447,7 @@ export default function WorldCupPage() {
               <div className="text-5xl mb-4">🎲</div>
               <h2 className="display text-2xl mb-2">Group draw pending</h2>
               <p className="text-muted max-w-md mx-auto">
-                The official FIFA group draw hasn't taken place yet. Provisional Elo-seeded
+                The official FIFA group draw hasn&apos;t taken place yet. Provisional Elo-seeded
                 groups are used for simulations until the draw is confirmed.
               </p>
             </div>

@@ -12,7 +12,7 @@ prediction engine, feature engineering, and ML training pipeline.
 Data Sources
      │
      ├─ martj42 CSV      (49K+ matches since 1872)
-     ├─ eloratings.net   (current team Elo ratings)
+     ├─ eloratings.net   (versioned team Elo ratings)
      ├─ FIFA rankings    (versioned men’s ranking snapshots)
      ├─ player ratings   (legal-source CSV, optional)
      └─ football-data.org API  (squad data, optional)
@@ -28,7 +28,9 @@ Validate   (schema + business rules)
      │
      ▼
 Load  ──── match_results (49,306 local rows observed during audit)
-      │    teams.elo (updated)
+      │    elo_rating_snapshots / team_elo_ratings (historical)
+      │    elo_source_logs (traceability)
+      │    teams.elo (current display cache)
       │    fifa_ranking_snapshots / fifa_ranking_entries (historical)
       │    team_rankings / ranking_source_logs (traceability)
       │    teams.fifa_rank (current display cache)
@@ -181,13 +183,14 @@ away_win:  13,934  (27.8%)
 ## Source 2: World Football Elo Ratings
 
 ### Source Details
-- **URL:** `https://www.eloratings.net/World.tsv`
+- **Primary URL:** `https://www.eloratings.net/2026_World_Cup`
+- **Fallback URL:** `https://www.eloratings.net/World.tsv`
 - **License:** Public data; attribution appreciated
 - **Coverage:** All FIFA-affiliated national teams, current ratings
 - **Format:** TSV (tab-separated)
 
 ### Extract Step
-**File:** `etl/extract/elo_ratings.py`
+**Files:** `etl/elo/extract_elo.py`, legacy compatibility in `etl/extract/elo_ratings.py`
 
 ```python
 fetch_elo_ratings(force_refresh=False) -> dict[str, float]
@@ -200,13 +203,38 @@ fetch_elo_ratings(force_refresh=False) -> dict[str, float]
 4. Cache to `data/cache/elo_ratings.tsv`
 
 ### Load Step
-**File:** `etl/pipeline.py :: run_elo_update()`
+**Files:** `etl/elo/load_elo.py`, `etl/pipeline.py :: run_elo_update()`
 
-1. Fetch ratings dict
-2. `SELECT * FROM teams`
-3. For each team: `canonical(team.name)` lookup in ratings dict
-4. Update `team.elo` in place
-5. `db.commit()`
+1. Fetch and parse the tournament page, then TSV fallback, then embedded offline
+   fallback when all network sources fail.
+2. Normalize team names through `canonical()`.
+3. Validate plausible rating range, duplicate teams, row count, and ranks.
+4. Store one immutable row in `elo_rating_snapshots`.
+5. Store one row per team in `team_elo_ratings` with rating, rank, source URL,
+   ingestion date, and data version.
+6. Append compatible `elo_history` rows for existing consumers.
+7. Update `teams.elo` only as a current display/cache value.
+
+Past Elo snapshots are never destructively overwritten. Current/future
+predictions read the latest valid snapshot; historical training rows read the
+latest snapshot on or before the match date, then fall back to `elo_history`,
+then neutral `1500.0`.
+
+### Match-Triggered Elo Updates
+
+**File:** `app/services/rating_update_service.py`
+
+`update_ratings_after_match(match_id)` is idempotent. The service hashes the
+match id, teams, score, date, tournament, and neutral flag. Processing the same
+result twice returns the existing snapshot; corrected scores generate a new
+data version. The service:
+
+1. Validates the match and team mappings.
+2. Reads the latest Elo before the match date.
+3. Applies the World-Football-Elo update formula.
+4. Stores a match-specific Elo snapshot and two team rating rows.
+5. Updates current display ratings when the result is current.
+6. Refreshes the affected feature row and invalidates prediction caches.
 
 ---
 
@@ -216,8 +244,8 @@ fetch_elo_ratings(force_refresh=False) -> dict[str, float]
 - **Official page:** `https://inside.fifa.com/fifa-world-ranking/men`
 - **Ranking schedule payload:** resolved from FIFA page metadata, then fetched from
   FIFA's ranking schedule API by `rankingScheduleId`
-- **Latest verified publication during this audit:** 01 April 2026
-- **Next listed FIFA update during this audit:** 11 June 2026
+- **Latest verified publication during this audit:** 11 June 2026
+- **Next listed FIFA update during this audit:** 20 July 2026
 - **Coverage:** FIFA men's national teams, ranks, previous ranks, points, and
   publication metadata
 
@@ -584,7 +612,10 @@ sees a match before training on it.
 | Team name variants | `canonical()` | Map to canonical (60+ variants) |
 | FIFA ranking snapshot size | `validate_ranking_snapshot()` | Reject too-small snapshots |
 | FIFA rank/team duplicates | `validate_ranking_snapshot()` | Reject duplicate rank or team keys |
+| Elo snapshot range | `validate_elo_snapshot()` | Reject implausible rating values |
+| Elo duplicate teams | `validate_elo_snapshot()` | Reject duplicate team keys |
 | Historical ranking leakage | `build_feature_vector()` | Use snapshot date <= match date or neutral fallback |
+| Feature NaN / inf | `ml/validate_features.py` | Fail validation report |
 
 ---
 
@@ -596,6 +627,8 @@ results.csv (CC BY-SA 4.0)
     ↓  load_match_results()
 match_results (49,306 local rows observed during audit)
     ↓  build_feature_matrix_from_db(since=2000-01-01)
+elo_rating_snapshots / team_elo_ratings
+    ↓  point-in-time Elo lookup
 fifa_ranking_snapshots / fifa_ranking_entries
     ↓  point-in-time ranking lookup
     ↓  [33 features × 25K+ rows from 2000+]
@@ -632,19 +665,66 @@ WinnerPredictionsSection charts and table
 
 ---
 
+## Refresh Schedule And APIs
+
+Celery beat schedules:
+
+| Task | Cadence | Purpose |
+|---|---:|---|
+| `etl.refresh_world_cup_results` | 3 hours | Ingest latest result rows during tournament periods |
+| `etl.refresh_elo_ratings` | 24 hours | Fetch and store a new Elo snapshot when available |
+| `etl.refresh_fifa_rankings` | 24 hours | Check FIFA official ranking publication |
+| `etl.refresh_player_availability` | 24 hours | Import legal/manual player availability CSV if present |
+| `etl.refresh_prediction_cache` | 6 hours | Invalidate stale prediction and team caches |
+
+Admin endpoints:
+
+```text
+POST /api/v1/admin/data/refresh-elo
+POST /api/v1/admin/data/refresh-fifa-rankings
+POST /api/v1/admin/data/refresh-all
+```
+
+Public freshness and rating endpoints:
+
+```text
+GET /api/v1/data/freshness
+GET /api/v1/ratings/elo/latest
+GET /api/v1/ratings/elo/history/{team_id}
+GET /api/v1/rankings/fifa/latest
+GET /api/v1/rankings/fifa/history/{team_id}
+```
+
+Manual validation:
+
+```bash
+cd wcip-backend
+python -m ml.validate_features
+python -m ml.retrain_if_needed --material-ranking-changes 5 --apply
+```
+
+## Player Data Source Policy
+
+Do not scrape FotMob, SofaScore, Transfermarkt, Opta, EA Sports pages, or any
+site whose terms prohibit scraping. Use official APIs, licensed data, public
+datasets, or manually maintained CSV files. If a row lacks enough factual
+fields, the generated player profile says the data is incomplete.
+
+---
+
 ## Known Limitations
 
 1. **xG proxy:** The `xg_diff` and `xga_diff` features are computed from actual goals
    scored/conceded in `match_results`, not from shot-level expected goals data.
    StatsBomb Open Data would provide true xG but is not yet integrated.
 
-2. **Player table sparsity:** Without a `FOOTBALL_DATA_API_KEY`, features 7–11 and
-   15–16 default to 0. This reduces signal for squad depth, injury burden, and
-   market value dimensions.
+2. **Player table sparsity:** Without legal player CSV imports or a configured
+   official/licensed API, player-strength features use neutral defaults. This
+   reduces signal for squad depth, injury burden, and market value dimensions.
 
-3. **No intra-tournament form updates:** Once a tournament starts, ETL would need
-   to run after each matchday to update form features for knockout-round predictions.
-   Celery daily_results_update handles this if running.
+3. **Intra-tournament form depends on jobs:** Once a tournament starts, Celery
+   must keep running so result refreshes update form, Elo, feature rows, and
+   prediction caches after matchdays.
 
 4. **Name normalization completeness:** The `NAME_MAP` dict covers 60+ variants.
    Teams that appear in the CSV under an unrecognised spelling will be stored under
@@ -656,6 +736,6 @@ WinnerPredictionsSection charts and table
    be backfilled if you want non-neutral `fifa_rank_diff` for pre-ingestion
    training periods.
 
-6. **Elo history backfill:** `teams.elo` is current-state data. Historical feature
-   generation reads `elo_history` when available and otherwise uses neutral Elo
-   for past matches, so old rows are not contaminated by today’s ratings.
+6. **Elo history backfill:** New Elo snapshots are preserved going forward.
+   Older historical Elo snapshots still need backfill if you want non-neutral
+   Elo for dates before the first stored snapshot/history row.

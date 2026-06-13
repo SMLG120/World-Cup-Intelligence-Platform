@@ -67,5 +67,28 @@ class Cache:
     def invalidate(self, *keys: str) -> None:
         self._backend.delete(*keys)
 
+    def invalidate_prefix(self, *prefixes: str) -> int:
+        """Best-effort prefix invalidation for prediction/data refreshes."""
+        deleted = 0
+        if not prefixes:
+            return deleted
+        if isinstance(self._backend, _MemoryCache):
+            keys = [
+                key for key in list(self._backend._store)
+                if any(key.startswith(prefix) for prefix in prefixes)
+            ]
+            self._backend.delete(*keys)
+            return len(keys)
+        try:
+            keys: list[str] = []
+            for prefix in prefixes:
+                keys.extend(list(self._backend.scan_iter(match=f"{prefix}*")))
+            if keys:
+                self._backend.delete(*keys)
+                deleted = len(keys)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Cache prefix invalidation failed: %s", exc)
+        return deleted
+
 
 cache = Cache()

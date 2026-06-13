@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/world-cup", tags=["world-cup"])
+alias_router = APIRouter(prefix="/world_cup", tags=["world-cup"])
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +165,45 @@ def get_2026_winner_predictions(
     )
 
 
+@router.get("/2026/predictions")
+def get_2026_predictions(
+    runs: int = Query(5000, ge=100, le=50_000),
+    seed: int | None = Query(None),
+    deterministic: bool = Query(False),
+) -> Dict[str, Any]:
+    """Return the current WC2026 prediction bundle."""
+    from app.services.data_refresh_service import get_data_freshness
+
+    return {
+        "year": 2026,
+        "prediction_type": "ensemble",
+        "freshness": get_data_freshness(),
+        "winner_predictions": get_2026_winner_predictions(
+            runs=runs,
+            seed=seed,
+            deterministic=deterministic,
+        ),
+    }
+
+
+@alias_router.get("/2026/winner-predictions")
+def get_2026_winner_predictions_alias(
+    runs: int = Query(5000, ge=100, le=50_000),
+    seed: int | None = Query(None),
+    deterministic: bool = Query(False),
+) -> List[Dict[str, Any]]:
+    return get_2026_winner_predictions(runs=runs, seed=seed, deterministic=deterministic)
+
+
+@alias_router.get("/2026/predictions")
+def get_2026_predictions_alias(
+    runs: int = Query(5000, ge=100, le=50_000),
+    seed: int | None = Query(None),
+    deterministic: bool = Query(False),
+) -> Dict[str, Any]:
+    return get_2026_predictions(runs=runs, seed=seed, deterministic=deterministic)
+
+
 def _simulate_2026(
     runs: int,
     overrides: Dict,
@@ -179,6 +219,7 @@ def _simulate_2026(
     from wcip.data.wc2026 import build_2026_groups_from_db, get_qualified_teams_from_db, build_2026_bracket
     from wcip.data.teams_2022 import Team
     from wcip.engine.montecarlo import generate_seed
+    from app.services.data_refresh_service import get_data_freshness
 
     qualified = get_qualified_teams_from_db()
     if not qualified:
@@ -227,6 +268,7 @@ def _simulate_2026(
         "seed": seed_to_use,
         "deterministic": bool(deterministic or seed is not None),
         "draw_complete": bool(build_2026_groups_from_db()),
+        "data_snapshot": get_data_freshness(),
         "teams": [
             {
                 "team": p.team,
@@ -306,6 +348,7 @@ def get_team_detail(team_name: str) -> Dict[str, Any]:
     from app.models.team import Team
     from app.models.player import Coach, Player
     from ml.features import _get_team_elo, _get_team_fifa_rank, _get_form, _get_squad_stats
+    from app.services.data_refresh_service import get_data_freshness
 
     canon = canonical(team_name)
     db = SessionLocal()
@@ -336,6 +379,7 @@ def get_team_detail(team_name: str) -> Dict[str, Any]:
             "squad_size": len(players),
             "injured_count": sum(1 for p in players if p.injured),
             "suspended_count": sum(1 for p in players if p.suspended),
+            "data_snapshot": get_data_freshness(),
         }
     finally:
         db.close()
@@ -380,6 +424,8 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
                     "recent_form_score": p.recent_form_score,
                     "market_value_eur": p.market_value_eur,
                     "data_source": p.data_source,
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                    "profile_description": p.profile_description,
                 }
                 for p in players
             ],

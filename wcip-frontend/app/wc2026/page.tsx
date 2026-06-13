@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { QualifiedTeam, WC2026Groups, WC2026Simulation } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 
 const CONFEDERATION_COLORS: Record<string, string> = {
   UEFA: "bg-blue-500/20 text-blue-300 border-blue-500/30",
@@ -116,6 +116,10 @@ export default function WC2026Page() {
               </span>
             </div>
           )}
+        </div>
+
+        <div className="mb-8">
+          <DataFreshnessStrip />
         </div>
 
         <div className="mb-8">

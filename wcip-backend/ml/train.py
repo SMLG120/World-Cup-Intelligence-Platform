@@ -276,6 +276,9 @@ def register_model(
             record.calibration_score = metrics.get("calibration_score")
             record.training_samples = int(metrics.get("training_samples", 0))
             record.feature_version = feature_version or FEATURE_VERSION
+            record.data_snapshot_version = _current_data_snapshot_version()
+            record.calibration_status = "calibrated"
+            record.requires_recalibration = False
             record.is_active = True
 
             # Auto-calibrate ensemble weight from inverse log-loss
@@ -346,6 +349,15 @@ def _update_ensemble_weights(results: Dict[str, Dict]) -> None:
             db.close()
     except Exception as e:
         logger.warning("Could not update ensemble weights: %s", e)
+
+
+def _current_data_snapshot_version() -> str | None:
+    try:
+        from app.services.data_refresh_service import get_data_freshness
+
+        return get_data_freshness().get("data_snapshot_version")
+    except Exception:
+        return None
 
 
 if __name__ == "__main__":

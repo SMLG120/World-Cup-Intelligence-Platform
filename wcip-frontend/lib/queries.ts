@@ -104,6 +104,50 @@ export function useAdminAnalytics() {
   return useQuery({ queryKey: ["admin-analytics"], queryFn: () => api.adminAnalytics(), retry: false });
 }
 
+export function useDataFreshness() {
+  return useQuery({
+    queryKey: ["data-freshness"],
+    queryFn: () => api.dataFreshness(),
+    staleTime: 60 * 1000,
+    retry: 1,
+  });
+}
+
+export function useRefreshAllData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.refreshAllData(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-freshness"] });
+      void qc.invalidateQueries({ queryKey: ["teams"] });
+      void qc.invalidateQueries({ queryKey: ["wc2026-winner-predictions"] });
+    },
+  });
+}
+
+export function useRefreshElo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.refreshElo(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-freshness"] });
+      void qc.invalidateQueries({ queryKey: ["teams"] });
+    },
+  });
+}
+
+export function useRefreshFifaRankings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.refreshFifaRankings(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["data-freshness"] });
+      void qc.invalidateQueries({ queryKey: ["teams"] });
+      void qc.invalidateQueries({ queryKey: ["wc2026-winner-predictions"] });
+    },
+  });
+}
+
 // ── ML predictions (Phase 2) ──────────────────────────────────────────────────
 
 export function useMLPredict() {

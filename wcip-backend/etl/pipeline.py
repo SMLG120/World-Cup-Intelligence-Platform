@@ -71,33 +71,12 @@ def run_historical_results(force_refresh: bool = False) -> int:
 
 
 def run_elo_update() -> dict:
-    """Refresh Elo ratings in the Team table from eloratings.net."""
-    from etl.extract.elo_ratings import fetch_elo_ratings
-    from etl.transform.normalize import canonical
+    """Refresh Elo ratings from World Football Elo as a versioned snapshot."""
+    from etl.elo import load_latest_elo_snapshot
 
-    from sqlalchemy import select
-    from app.db.base import SessionLocal
-    from app.models.team import Team
-
-    ratings = fetch_elo_ratings(force_refresh=True)
-    db = SessionLocal()
-    updated = 0
-    try:
-        teams = db.scalars(select(Team)).all()
-        for team in teams:
-            canon = canonical(team.name)
-            if canon in ratings:
-                team.elo = ratings[canon]
-                updated += 1
-            elif team.name in ratings:
-                team.elo = ratings[team.name]
-                updated += 1
-        db.commit()
-    finally:
-        db.close()
-
-    logger.info("Elo update complete. Updated %d teams", updated)
-    return {"updated_teams": updated, "source_teams": len(ratings)}
+    result = load_latest_elo_snapshot(force_refresh=True)
+    logger.info("Elo update complete: %s", result)
+    return result
 
 
 def run_fifa_rankings_update(force_refresh: bool = False) -> dict:

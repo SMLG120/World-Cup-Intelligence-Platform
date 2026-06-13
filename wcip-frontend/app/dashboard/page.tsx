@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
@@ -36,6 +37,8 @@ export default function DashboardPage() {
           <Button variant="outline" size="sm">View Saved Simulations</Button>
         </Link>
       </header>
+
+      <DataFreshnessStrip />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link href="/simulate">

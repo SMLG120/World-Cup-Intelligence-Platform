@@ -52,6 +52,7 @@ class Player(Base):
     injured: Mapped[bool] = mapped_column(Boolean, default=False)
     suspended: Mapped[bool] = mapped_column(Boolean, default=False)
     injury_notes: Mapped[str | None] = mapped_column(Text)
+    profile_description: Mapped[str | None] = mapped_column(Text)
 
     # Market / International
     market_value_eur: Mapped[float | None] = mapped_column(Float)

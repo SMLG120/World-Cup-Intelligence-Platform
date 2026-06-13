@@ -27,6 +27,7 @@ def world_cup_2026_winner_predictions(
         )
 
     from etl.transform.normalize import canonical
+    from app.services.data_refresh_service import get_data_freshness
     from ml.features import (
         _get_coach_impact,
         _get_form,
@@ -108,6 +109,7 @@ def world_cup_2026_winner_predictions(
         for team in teams_dict
     })
 
+    freshness = get_data_freshness()
     rows: list[dict[str, Any]] = []
     for team, ensemble_probability in ensemble_probs.items():
         sim = statistical[team]
@@ -124,6 +126,13 @@ def world_cup_2026_winner_predictions(
                 "group": group_by_team.get(team),
                 "confederation": meta.get("confederation") or teams_dict[team].confederation,
                 "fifa_rank": int(strengths["fifa_rank"]),
+                "elo_rating_used": round(float(strengths["elo"]), 3),
+                "fifa_ranking_used": int(strengths["fifa_rank"]),
+                "data_snapshot": freshness.get("data_snapshot_timestamp") or freshness.get("generated_at"),
+                "data_snapshot_version": freshness.get("data_snapshot_version"),
+                "player_data_freshness_timestamp": freshness.get("last_player_data_update"),
+                "model_version": freshness.get("model_version"),
+                "prediction_type": "ensemble",
                 "champion_probability": _pct(ensemble_probability),
                 "final_probability": _pct(sim.final),
                 "semifinal_probability": _pct(sim.semi),

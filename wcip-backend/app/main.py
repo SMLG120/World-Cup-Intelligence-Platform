@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -27,9 +29,63 @@ async def lifespan(app: FastAPI):
     # Create tables / seed on startup (safe + idempotent for dev & SQLite).
     from app.db.init_db import init_db
     init_db()
+    _log_startup_diagnostics()
     logger.info("Startup complete (cache backend: %s)", cache.kind)
     yield
     logger.info("Shutdown")
+
+
+def _log_startup_diagnostics() -> None:
+    """Log local startup state without failing the app if diagnostics fail."""
+
+    try:
+        from sqlalchemy import text
+        from app.db.base import SessionLocal
+        from app.models.match_result import QualifiedTeam
+        from app.models.player import Player
+        from app.models.team import Team
+
+        db_url = _sanitize_database_url(settings.DATABASE_URL)
+        sqlite_path = _sqlite_path(settings.DATABASE_URL)
+        db = SessionLocal()
+        try:
+            migration = db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar()
+            team_count = db.query(Team).count()
+            player_count = db.query(Player).count()
+            qualified_count = db.query(QualifiedTeam).count()
+        finally:
+            db.close()
+
+        logger.info(
+            "Startup diagnostics database_url=%s sqlite_path=%s alembic_revision=%s "
+            "teams=%s players=%s qualified_world_cup_teams=%s",
+            db_url,
+            sqlite_path or "n/a",
+            migration or "not_recorded",
+            team_count,
+            player_count,
+            qualified_count,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Startup diagnostics unavailable: %s", exc)
+
+
+def _sanitize_database_url(url: str) -> str:
+    if "@" not in url:
+        return url
+    parts = urlsplit(url)
+    host = parts.netloc.rsplit("@", 1)[-1]
+    return f"{parts.scheme}://***@{host}{parts.path}"
+
+
+def _sqlite_path(url: str) -> str | None:
+    if not url.startswith("sqlite:///"):
+        return None
+    raw_path = url.replace("sqlite:///", "", 1)
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return str(path.resolve())
 
 
 app = FastAPI(

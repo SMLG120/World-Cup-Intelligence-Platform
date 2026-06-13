@@ -6,6 +6,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 
 type SortKey = "elo" | "fifa_rank" | "name";
 
@@ -38,6 +39,8 @@ export default function TeamsPage() {
           </Select>
         </div>
       </header>
+
+      <DataFreshnessStrip compact />
 
       <Card>
         <CardHeader><span className="kicker">All 48 nations</span></CardHeader>

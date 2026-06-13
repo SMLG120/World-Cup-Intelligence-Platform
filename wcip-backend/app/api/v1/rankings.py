@@ -7,7 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from sqlalchemy import select
 
 from app.core.deps import AdminUser, DbSession
-from app.models.ranking import FifaRankingEntry, FifaRankingSnapshot
+from app.models.ranking import FifaRankingEntry, FifaRankingSnapshot, TeamRanking
+from app.models.team import Team
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
 
@@ -50,6 +51,50 @@ def get_fifa_ranking_snapshot(
     if not snapshot:
         raise HTTPException(404, "FIFA ranking snapshot not found")
     return _snapshot_payload(db, snapshot, limit=limit)
+
+
+@router.get("/fifa/history/{team_id}")
+def fifa_ranking_history(
+    team_id: int,
+    db: DbSession,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    """Return historical FIFA ranking records for one local team."""
+
+    team = db.get(Team, team_id)
+    if not team:
+        raise HTTPException(
+            404,
+            {"error_code": "team_not_found", "message": "Team not found", "detail": team_id},
+        )
+    rows = db.scalars(
+        select(TeamRanking)
+        .where(TeamRanking.team_id == team_id, TeamRanking.ranking_provider == "FIFA")
+        .order_by(TeamRanking.ranking_date.desc(), TeamRanking.id.desc())
+        .limit(limit)
+    ).all()
+    if not rows:
+        rows = db.scalars(
+            select(TeamRanking)
+            .where(TeamRanking.team_name == team.name, TeamRanking.ranking_provider == "FIFA")
+            .order_by(TeamRanking.ranking_date.desc(), TeamRanking.id.desc())
+            .limit(limit)
+        ).all()
+    return {
+        "team_id": team.id,
+        "team_name": team.name,
+        "entries": [
+            {
+                "rank": row.rank,
+                "points": row.points,
+                "ranking_date": row.ranking_date.isoformat(),
+                "data_version": row.data_version,
+                "source_url": row.source_url,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ],
+    }
 
 
 @router.post("/fifa/refresh")

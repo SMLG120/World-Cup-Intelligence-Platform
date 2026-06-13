@@ -106,6 +106,9 @@ class MLModelRecord(Base):
     ensemble_weight: Mapped[float] = mapped_column(Float, default=1.0)
 
     feature_version: Mapped[str] = mapped_column(String(20), default="v1")
+    data_snapshot_version: Mapped[str | None] = mapped_column(String(120))
+    calibration_status: Mapped[str] = mapped_column(String(40), default="unknown")
+    requires_recalibration: Mapped[bool] = mapped_column(Boolean, default=False)
     training_samples: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     trained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

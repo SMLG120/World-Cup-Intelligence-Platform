@@ -5,7 +5,6 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Cell, LabelList,
 } from "recharts";
 import { useWC2026Simulate } from "@/lib/queries";
 import type { TeamProbability } from "@/lib/types";
@@ -14,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 import { pct, ordinal } from "@/lib/utils";
 
 // ── Run options ───────────────────────────────────────────────────────────────
@@ -180,6 +180,8 @@ export default function SimulatePage() {
           and the hybrid prediction engine. Larger run counts reduce sampling noise.
         </p>
       </header>
+
+      <DataFreshnessStrip />
 
       {/* Controls */}
       <Card>

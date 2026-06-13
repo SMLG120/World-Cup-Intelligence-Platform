@@ -56,6 +56,7 @@ def _ensure_sqlite_runtime_columns() -> None:
             "player_rating_source": "VARCHAR(120)",
             "player_rating_version": "VARCHAR(80)",
             "player_rating_updated_at": "DATETIME",
+            "profile_description": "TEXT",
         },
     )
     add_missing_columns(
@@ -77,6 +78,14 @@ def _ensure_sqlite_runtime_columns() -> None:
             "average_caps_diff": "FLOAT NOT NULL DEFAULT 0.0",
             "total_international_goals_diff": "FLOAT NOT NULL DEFAULT 0.0",
             "weighted_player_strength_diff": "FLOAT NOT NULL DEFAULT 0.0",
+        },
+    )
+    add_missing_columns(
+        "ml_models",
+        {
+            "data_snapshot_version": "VARCHAR(120)",
+            "calibration_status": "VARCHAR(40) NOT NULL DEFAULT 'unknown'",
+            "requires_recalibration": "BOOLEAN NOT NULL DEFAULT 0",
         },
     )
 

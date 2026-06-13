@@ -24,6 +24,49 @@ export interface Team {
   fifa_rank: number;
 }
 
+export interface EloRatingEntry {
+  team_name: string;
+  team_code: string | null;
+  rank: number | null;
+  rating: number;
+  rating_date: string;
+  data_version: string;
+  source_url: string;
+  created_at: string | null;
+}
+
+export interface LatestEloSnapshot {
+  snapshot_id: string;
+  data_version: string;
+  rating_date: string;
+  source_url: string;
+  team_count: number;
+  created_at: string | null;
+  entries: EloRatingEntry[];
+}
+
+export interface DataFreshness {
+  generated_at: string;
+  data_snapshot_timestamp: string | null;
+  last_elo_update: string | null;
+  last_elo_rating_date: string | null;
+  elo_data_version: string | null;
+  elo_source_url: string | null;
+  last_fifa_ranking_update: string | null;
+  last_fifa_ranking_date: string | null;
+  fifa_data_version: string | null;
+  fifa_source_url: string | null;
+  last_match_result_update: string | null;
+  last_player_data_update: string | null;
+  player_data_source: string | null;
+  model_version: string | null;
+  model_trained_at: string | null;
+  feature_version: string;
+  data_snapshot_version: string;
+  using_latest_cached_snapshot: boolean;
+  source_status: Record<string, string>;
+}
+
 export interface EloPoint {
   rating: number;
   opponent: string | null;
@@ -160,12 +203,14 @@ export interface HybridPrediction {
   model_agreement: number;
   model_weights_used?: Record<string, number>;
   feature_values_used?: Record<string, number>;
+  data_snapshot?: Record<string, unknown>;
   explanation: PredictionExplanation;
 }
 
 export interface MLModel {
   id: number;
   model_name: string;
+  model_type?: string | null;
   version: string;
   accuracy: number | null;
   f1_score: number | null;
@@ -173,10 +218,20 @@ export interface MLModel {
   log_loss: number | null;
   calibration_score: number | null;
   ensemble_weight: number;
+  weight?: number | null;
+  ml_weight?: number | null;
+  final_ensemble_weight?: number | null;
+  metrics?: Record<string, number | string | null>;
   training_samples: number | null;
   feature_version: string;
+  data_snapshot_version?: string | null;
+  calibration_status?: string;
+  requires_recalibration?: boolean;
   is_active: boolean;
+  status?: string | null;
+  description?: string | null;
   trained_at: string | null;
+  last_trained_at?: string | null;
 }
 
 export interface FeatureVector {
@@ -212,6 +267,7 @@ export interface WC2026Simulation {
   seed?: number | null;
   deterministic?: boolean;
   draw_complete: boolean;
+  data_snapshot?: DataFreshness;
   teams: TeamProbability[];
 }
 
@@ -225,6 +281,13 @@ export interface WorldCupWinnerPrediction {
   group: string | null;
   confederation: string;
   fifa_rank: number;
+  elo_rating_used?: number;
+  fifa_ranking_used?: number;
+  data_snapshot?: string | null;
+  data_snapshot_version?: string | null;
+  player_data_freshness_timestamp?: string | null;
+  model_version?: string | null;
+  prediction_type?: string;
   champion_probability: number;
   final_probability: number;
   semifinal_probability: number;
@@ -265,6 +328,7 @@ export interface TeamDetail {
   squad_size: number;
   injured_count: number;
   suspended_count: number;
+  data_snapshot?: DataFreshness;
 }
 
 export interface Player {
@@ -287,5 +351,7 @@ export interface Player {
   fitness_score: number;
   recent_form_score?: number;
   data_source?: string | null;
+  updated_at?: string | null;
+  profile_description?: string | null;
   market_value_eur: number | null;
 }

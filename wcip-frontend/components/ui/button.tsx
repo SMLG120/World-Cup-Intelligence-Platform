@@ -25,6 +25,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(
   ({ className, variant = "primary", size = "md", ...props }, ref) => (
     <button
       ref={ref}
+      suppressHydrationWarning
       className={cn(
         "inline-flex items-center justify-center gap-2 rounded-md uppercase tracking-wide transition-all",
         "disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none",

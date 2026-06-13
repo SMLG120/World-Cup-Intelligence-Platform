@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
+import { DataFreshnessStrip } from "@/components/data-freshness";
 
 export default function LandingPage() {
   const { user, loading } = useAuth();
@@ -48,6 +49,10 @@ export default function LandingPage() {
         <Link href="/register"><Button size="lg">Get started</Button></Link>
         <Link href="/simulate"><Button size="lg" variant="outline">Try a match</Button></Link>
       </motion.div>
+
+      <div className="mt-10 max-w-4xl">
+        <DataFreshnessStrip compact />
+      </div>
 
       <div className="mt-20 grid gap-4 sm:grid-cols-3">
         {[

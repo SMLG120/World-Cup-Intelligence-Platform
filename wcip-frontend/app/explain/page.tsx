@@ -25,11 +25,9 @@ const MODELS = [
 // ── SHAP waterfall chart ──────────────────────────────────────────────────────
 
 function SHAPWaterfall({
-  home,
   positive,
   negative,
 }: {
-  home: string;
   positive: ExplanationFactor[];
   negative: ExplanationFactor[];
 }) {
@@ -88,7 +86,6 @@ function FeatureImportanceChart({ features }: { features: Record<string, number>
   const sorted = Object.entries(features)
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
     .slice(0, 12);
-  const maxAbs = Math.max(...sorted.map(([, v]) => Math.abs(v)));
 
   const data = sorted.map(([name, value]) => ({
     name: name.replace(/_/g, " "),
@@ -361,7 +358,6 @@ export default function ExplainPage() {
               <CardHeader><span className="kicker">SHAP waterfall — impact on home-win probability</span></CardHeader>
               <CardBody>
                 <SHAPWaterfall
-                  home={home}
                   positive={explanation.top_positive}
                   negative={explanation.top_negative}
                 />

@@ -47,6 +47,7 @@ class PlayerOut(BaseModel):
     international_goals: int
     injured: bool
     suspended: bool
+    profile_description: Optional[str]
     fitness_score: float
     recent_form_score: float
     data_source: Optional[str]
