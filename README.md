@@ -67,10 +67,8 @@ Step by step:
 6. `run_fifa_rankings_update()` fetches the latest official FIFA ranking
    publication, validates it, stores it as a timestamped snapshot, and refreshes
    `teams.fifa_rank` as a display cache.
-7. `run_player_rating_import()` imports optional legal-source player ratings
-   from `data/external/ea_player_ratings.csv` when present.
-8. `run_full_pipeline()` runs historical results, Elo update, FIFA ranking
-   snapshot ingestion, WC2026 seed, and optional player-rating import.
+7. `run_full_pipeline()` runs historical results, Elo update, FIFA ranking
+   snapshot ingestion, and the WC2026 seed.
 
 Useful commands:
 
@@ -79,7 +77,6 @@ cd wcip-backend
 python -c "from etl.pipeline import run_historical_results; run_historical_results()"
 python -c "from etl.pipeline import run_elo_update; print(run_elo_update())"
 python -c "from etl.pipeline import run_fifa_rankings_update; print(run_fifa_rankings_update(force_refresh=True))"
-python -c "from etl.pipeline import run_player_rating_import; print(run_player_rating_import())"
 python -c "from etl.pipeline import run_full_pipeline; print(run_full_pipeline())"
 ```
 
@@ -100,11 +97,10 @@ Step by step:
 5. It validates that ranks and teams are unique and that the snapshot has enough
    entries to be credible.
 6. The loader writes one row to `fifa_ranking_snapshots` and one row per team to
-   `fifa_ranking_entries` and `team_rankings`.
+   `fifa_ranking_entries`.
 7. Older snapshots remain in the database for reproducible feature generation,
    backtesting, Elo recalibration, tournament simulations, and ML training.
 8. The newest snapshot updates `teams.fifa_rank` only as a current UI/API cache.
-9. `ranking_source_logs` records fetch/load attempts for traceability.
 
 Run a ranking refresh:
 
@@ -124,38 +120,7 @@ The Celery beat scheduler also runs `fifa_rankings_update` daily. Material
 changes are defined as top-10 movement, a rank delta of at least 5 inside the top
 50, or a points delta of at least 25.
 
-### 4. Player Rating CSV ETL
-
-The project does not scrape proprietary player-rating websites. EA Sports FC or
-other player ratings must come from a legal source: licensed API, public dataset,
-or manually maintained CSV with attribution.
-
-Default import path:
-
-```text
-wcip-backend/data/external/ea_player_ratings.csv
-```
-
-Supported columns include:
-
-```text
-player_name,team_name,position,club,age,international_caps,
-international_goals,recent_form_score,injured,suspended,minutes_played,
-goals,assists,xg,xa,market_value_eur,player_rating,ea_fc_rating
-```
-
-Run the importer:
-
-```bash
-cd wcip-backend
-python -c "from etl.player_ratings import import_player_ratings_csv; print(import_player_ratings_csv('data/external/ea_player_ratings.csv', source_name='manual_csv', source_version='2026-06'))"
-```
-
-The importer validates ratings, normalizes team names, upserts `players`,
-records import batches in `player_rating_imports`, and preserves per-row history
-in `player_rating_records`.
-
-### 5. WC2026 Seed ETL
+### 4. WC2026 Seed ETL
 
 The World Cup 2026 seed pipeline is isolated from the generic football-data ETL.
 That makes tournament roster updates easier and keeps API-Football snapshots from
@@ -247,7 +212,7 @@ The normalizer maps known variants such as `Czech Republic` to `Czechia`, so the
 database stays consistent across historical results, API payloads, and frontend
 selectors.
 
-### 6. Feature Engineering And ML
+### 5. Feature Engineering And ML
 
 Feature generation lives in `wcip-backend/ml/features.py`.
 
@@ -263,17 +228,11 @@ The feature layer builds home-minus-away differentials such as:
 - average age
 - tournament experience
 - starting XI and bench strength
-- player rating, position-unit strength, squad depth, form, availability,
-  international experience, caps, and goals
 
 Historical feature generation uses point-in-time FIFA ranking snapshots and Elo
 history when available. It does not use today’s rankings for old matches. If a
 historical snapshot is missing, ranking/Elo features fall back to neutral values
 instead of leaking current data into training.
-
-The active feature version is `v2`. The original 17 features remain first in the
-vector so older `v1` model files can be used as a compatibility fallback until
-the full model set is retrained.
 
 Training uses `wcip-backend/ml/train.py`. Model records are stored in the
 `ml_models` table and model files are written under `wcip-backend/models`.
@@ -287,7 +246,7 @@ python -m ml.train --model catboost
 python -m ml.train --model all --full-refresh
 ```
 
-### 7. Prediction Runtime
+### 6. Prediction Runtime
 
 The service bridge is `wcip-backend/app/services/prediction.py`.
 
@@ -312,17 +271,6 @@ For hybrid ML prediction:
 2. Available trained models produce outcome probabilities.
 3. The ensemble combines model outputs with the statistical layer.
 4. SHAP or fallback feature explanations describe the result.
-
-For World Cup winner predictions:
-
-1. `GET /api/v1/world-cup/2026/winner-predictions` runs the WC2026 Monte Carlo
-   simulation.
-2. The service enriches each team with group, confederation, FIFA rank, Elo, and
-   player-strength features.
-3. It computes statistical, ML-style strength, and ensemble probabilities.
-4. Champion and ensemble probabilities are normalized to approximately 100%.
-5. The frontend renders ranked tables, probability charts, model comparison,
-   confederation breakdown, favorites, and dark-horse teams from this endpoint.
 
 ## How The Interface Works
 
@@ -407,7 +355,6 @@ All backend API routes use the `/api/v1` prefix.
 | `GET` | `/world-cup/groups` | WC2026 groups or pending draw status |
 | `GET` | `/world-cup/bracket` | WC2026 knockout bracket |
 | `POST` | `/world-cup/simulate` | WC2026 tournament simulation |
-| `GET` | `/world-cup/2026/winner-predictions` | Ranked WC2026 winner predictions |
 | `GET` | `/world-cup/schedule` | WC2026 schedule metadata |
 | `GET` | `/world-cup/teams/{team_name}` | WC2026 team, squad, and coach detail |
 | `GET` | `/world-cup/players/{team_name}` | WC2026 squad list |
@@ -498,19 +445,6 @@ curl http://localhost:8000/api/v1/rankings/fifa/latest?limit=10
 ```bash
 cd wcip-backend
 python -c "from etl.world_cup_2026.ingest import run_wc2026_seed; print(run_wc2026_seed())"
-```
-
-### Import Player Ratings From CSV
-
-```bash
-cd wcip-backend
-python -c "from etl.pipeline import run_player_rating_import; print(run_player_rating_import('data/external/ea_player_ratings.csv'))"
-```
-
-### Show World Cup Winner Predictions
-
-```bash
-curl http://localhost:8000/api/v1/world-cup/2026/winner-predictions?runs=5000
 ```
 
 With a JSON source snapshot:
@@ -615,10 +549,7 @@ outside the sandbox if you see `PermissionError: Operation not permitted` from
 - Elo ratings: `eloratings.net`
 - FIFA men’s rankings: official FIFA ranking page and ranking schedule payload,
   stored as immutable snapshots in `fifa_ranking_snapshots` and
-  `fifa_ranking_entries`; fetch/load attempts are recorded in
-  `ranking_source_logs`
-- Player ratings/form: optional legal-source CSV import at
-  `wcip-backend/data/external/ea_player_ratings.csv`
+  `fifa_ranking_entries`
 - Official WC2026 teams/groups: FIFA standings reference
 - WC2026 live/squad/team data: API-Football / API-SPORTS, `league=1`,
   `season=2026`
