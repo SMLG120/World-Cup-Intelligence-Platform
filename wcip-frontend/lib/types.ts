@@ -418,6 +418,14 @@ export interface Player {
   club: string | null;
   age: number | null;
   nationality?: string | null;
+  // FIFA squad PDF fields
+  shirt_number?: number | null;
+  first_names?: string | null;
+  last_names?: string | null;
+  name_on_shirt?: string | null;
+  date_of_birth?: string | null;
+  height_cm?: number | null;
+  // Playing metrics
   goals: number;
   assists: number;
   xg: number;
@@ -437,4 +445,9 @@ export interface Player {
   updated_at?: string | null;
   profile_description?: string | null;
   market_value_eur: number | null;
+}
+
+export interface TeamSquad {
+  team_name: string;
+  squad: Player[];
 }

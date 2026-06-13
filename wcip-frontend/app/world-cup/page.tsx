@@ -13,8 +13,6 @@ import type {
   TeamProbability,
   QualifiedTeam,
   WC2026GroupRow,
-  WC2026KnockoutMatch,
-  WC2026KnockoutRound,
   WC2026Simulation,
 } from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
@@ -24,6 +22,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { DataFreshnessStrip } from "@/components/data-freshness";
+import { TournamentBracket } from "@/components/bracket-tree";
+import { SquadPanel } from "@/components/squad-panel";
 import { pct, ordinal } from "@/lib/utils";
 
 // ── Colour palette per confederation ────────────────────────────────────────
@@ -377,69 +377,6 @@ function BestThirdTable({ rows }: { rows?: WC2026GroupRow[] }) {
   );
 }
 
-function BracketMatchCard({ match }: { match: WC2026KnockoutMatch }) {
-  const winnerProb = match.winner_probability != null ? pct(match.winner_probability) : "n/a";
-  const championProb = match.champion_probability != null ? pct(match.champion_probability) : null;
-  const modeLabel = (match.effective_prediction_mode ?? match.prediction_mode ?? "ensemble").replace("_", " ");
-  const row = (team: string, code: string | undefined, goals: number) => (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-[10px] font-mono text-muted w-8 shrink-0">{code ?? team.slice(0, 3).toUpperCase()}</span>
-        <span className={match.winner === team ? "font-semibold text-fg truncate" : "text-muted truncate"}>
-          {team}
-        </span>
-      </div>
-      <span className={`tnum shrink-0 ${match.winner === team ? "text-pitch font-semibold" : "text-fg"}`}>
-        {goals}
-      </span>
-    </div>
-  );
-
-  return (
-    <div className="rounded-md border border-line bg-elevated/50 p-3 text-xs space-y-2">
-      {row(match.home, match.home_code, match.home_goals)}
-      {row(match.away, match.away_code, match.away_goals)}
-      <div className="grid grid-cols-2 gap-2 border-t border-line/50 pt-2 text-[10px] text-muted">
-        <span>{match.match_id}</span>
-        <span className="text-right capitalize">{match.decided_by.replace("_", " ")}</span>
-        <span>Winner prob</span>
-        <span className="text-right text-pitch tnum">{winnerProb}</span>
-        <span>Model</span>
-        <span className="text-right uppercase">{modeLabel}</span>
-        {championProb && (
-          <>
-            <span>Champion odds</span>
-            <span className="text-right tnum">{championProb}</span>
-          </>
-        )}
-      </div>
-      {match.advancement_reason && (
-        <p className="text-[10px] leading-snug text-muted">{match.advancement_reason}</p>
-      )}
-    </div>
-  );
-}
-
-function KnockoutBracket({ rounds }: { rounds?: WC2026KnockoutRound[] }) {
-  const visibleRounds = (rounds ?? []).filter((round) => round.matches.length > 0);
-  if (!visibleRounds.length) return null;
-  return (
-    <div className="overflow-x-auto pb-2">
-      <div className="grid gap-4 min-w-[1260px]" style={{ gridTemplateColumns: `repeat(${visibleRounds.length}, minmax(190px, 1fr))` }}>
-        {visibleRounds.map((round) => (
-          <div key={round.round} className="space-y-2">
-            <div className="kicker text-center">{round.round}</div>
-            {round.matches
-              .slice()
-              .sort((a, b) => a.order - b.order)
-              .map((match) => <BracketMatchCard key={match.match_id} match={match} />)}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Run count selector ────────────────────────────────────────────────────────
 const RUN_OPTIONS: [number, string][] = [
   [1, "Single"],
@@ -486,6 +423,7 @@ export default function WorldCupPage() {
   const [predictionMode, setPredictionMode] = useState<PredictionMode>("ensemble");
   const [teamSort, setTeamSort] = useState<"elo" | "name" | "fifa">("elo");
   const [confFilter, setConfFilter] = useState("all");
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
   const { data: teams, isLoading: teamsLoading } = useWC2026Teams();
   const { data: groups, isLoading: groupsLoading } = useWC2026Groups();
@@ -876,18 +814,32 @@ export default function WorldCupPage() {
                   </CardBody>
                 </Card>
               </div>
-              <KnockoutBracket rounds={simResult.knockout_bracket} />
+              <p className="text-xs text-muted">
+                Click any team name to view their squad roster.
+              </p>
+              <TournamentBracket
+                rounds={simResult.knockout_bracket}
+                champion={simResult.champion}
+                championProbability={simResult.champion_probability}
+                onTeamClick={setSelectedTeam}
+              />
             </>
           ) : (
             <Card>
               <CardBody className="py-16 text-center">
                 <h2 className="display text-2xl mb-2">No bracket yet</h2>
-                <p className="text-muted">Run a simulation to generate a full knockout path.</p>
+                <p className="text-muted">
+                  Run a simulation above to generate a full knockout path with
+                  connected bracket visualization.
+                </p>
               </CardBody>
             </Card>
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Squad panel — slides in from right when a team is clicked in the bracket */}
+      <SquadPanel teamName={selectedTeam} onClose={() => setSelectedTeam(null)} />
     </div>
   );
 }

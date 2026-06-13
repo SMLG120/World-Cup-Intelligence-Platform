@@ -861,6 +861,14 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
                     "club": p.club,
                     "age": p.age,
                     "nationality": p.nationality,
+                    # FIFA squad PDF fields
+                    "shirt_number": p.shirt_number,
+                    "first_names": p.first_names,
+                    "last_names": p.last_names,
+                    "name_on_shirt": p.name_on_shirt,
+                    "date_of_birth": p.date_of_birth,
+                    "height_cm": p.height_cm,
+                    # Playing metrics
                     "goals": p.goals,
                     "assists": p.assists,
                     "xg": p.xg,

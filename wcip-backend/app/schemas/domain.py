@@ -37,6 +37,14 @@ class PlayerOut(BaseModel):
     club: Optional[str]
     age: Optional[int]
     nationality: Optional[str]
+    # FIFA squad PDF fields
+    shirt_number: Optional[int] = None
+    first_names: Optional[str] = None
+    last_names: Optional[str] = None
+    name_on_shirt: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    height_cm: Optional[int] = None
+    # Playing metrics
     minutes_played: float
     goals: float
     assists: float

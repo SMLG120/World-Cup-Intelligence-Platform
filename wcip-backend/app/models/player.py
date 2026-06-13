@@ -24,6 +24,14 @@ class Player(Base):
     age: Mapped[int | None] = mapped_column(Integer)
     nationality: Mapped[str | None] = mapped_column(String(120))
 
+    # FIFA squad PDF fields
+    shirt_number: Mapped[int | None] = mapped_column(Integer)
+    first_names: Mapped[str | None] = mapped_column(String(80))
+    last_names: Mapped[str | None] = mapped_column(String(80))
+    name_on_shirt: Mapped[str | None] = mapped_column(String(60))
+    date_of_birth: Mapped[str | None] = mapped_column(String(12))  # DD/MM/YYYY
+    height_cm: Mapped[int | None] = mapped_column(Integer)
+
     # Playing time
     minutes_played: Mapped[float] = mapped_column(Float, default=0.0)
 
@@ -127,8 +135,15 @@ class Coach(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), index=True)
     team_name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), index=True)
     nationality: Mapped[str | None] = mapped_column(String(120))
     preferred_formation: Mapped[str | None] = mapped_column(String(20))  # e.g. "4-3-3"
+
+    # FIFA squad PDF fields
+    first_names: Mapped[str | None] = mapped_column(String(80))
+    last_names: Mapped[str | None] = mapped_column(String(80))
+    role: Mapped[str | None] = mapped_column(String(60))   # "Head Coach", etc.
+    date_of_birth: Mapped[str | None] = mapped_column(String(12))  # DD/MM/YYYY
 
     # Historical record
     win_pct: Mapped[float] = mapped_column(Float, default=0.5)          # 0..1
