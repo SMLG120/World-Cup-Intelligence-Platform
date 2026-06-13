@@ -10,7 +10,22 @@ import type {
   WorldCupWinnerPrediction,
 } from "./types";
 
-const BASE = process.env.NEXT_PUBLIC_API_BASE || "/backend/api/v1";
+function resolveApiBase() {
+  const raw =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE ||
+    "/backend/api/v1";
+  const trimmed = raw.replace(/\/+$/, "");
+  if (trimmed.endsWith("/api/v1") || trimmed.endsWith("/backend/api/v1")) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("/")) {
+    return `${trimmed}/api/v1`;
+  }
+  return `${trimmed}/api/v1`;
+}
+
+const BASE = resolveApiBase();
 
 const ACCESS_KEY = "wcip_access";
 const REFRESH_KEY = "wcip_refresh";

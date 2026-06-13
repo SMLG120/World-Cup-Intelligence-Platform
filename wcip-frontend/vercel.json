@@ -3,7 +3,11 @@
   "framework": "nextjs",
   "buildCommand": "next build",
   "env": {
-    "NEXT_PUBLIC_API_BASE": "/backend/api/v1"
+    "NEXT_PUBLIC_API_BASE_URL": "https://YOUR-RENDER-API.onrender.com",
+    "NEXT_PUBLIC_APP_NAME": "World Cup Intelligence Platform",
+    "NEXT_PUBLIC_ENABLE_ML": "true",
+    "NEXT_PUBLIC_ENABLE_SCENARIOS": "true",
+    "NEXT_PUBLIC_ENABLE_EXPLAINABILITY": "true"
   },
   "rewrites": [
     { "source": "/backend/:path*", "destination": "https://YOUR-RENDER-API.onrender.com/:path*" }

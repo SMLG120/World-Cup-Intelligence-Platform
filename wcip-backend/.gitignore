@@ -1,0 +1,58 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# SQLite / local databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
+
+# Logs
+*.log
+logs/
+
+# ETL/cache/runtime artifacts
+etl/data/etl_state.json
+data/cache/*
+!data/cache/.gitkeep
+data/external/*
+!data/external/.gitkeep
+
+# ML artifacts
+*.pkl
+*.joblib
+*.onnx
+models/
+!models/.gitkeep
+catboost_info/
+mlruns/
+wandb/
+artifacts/
+
+# Docker local state
+docker-data/
+redis-data/
+postgres-data/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -43,7 +43,14 @@ def _create_token(subject: str, token_type: str, expires_delta: timedelta,
     }
     if extra:
         payload.update(extra)
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    secret = _token_secret(token_type)
+    return jwt.encode(payload, secret, algorithm=settings.ALGORITHM)
+
+
+def _token_secret(token_type: str) -> str:
+    if token_type == REFRESH and settings.REFRESH_SECRET_KEY:
+        return settings.REFRESH_SECRET_KEY
+    return settings.SECRET_KEY
 
 
 def create_access_token(subject: str, role: str = "user") -> str:
@@ -63,4 +70,13 @@ def create_refresh_token(subject: str) -> str:
 
 def decode_token(token: str) -> dict:
     """Decode and validate a JWT. Raises jwt exceptions on failure."""
-    return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    try:
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except jwt.PyJWTError:
+        if not settings.REFRESH_SECRET_KEY or settings.REFRESH_SECRET_KEY == settings.SECRET_KEY:
+            raise
+        return jwt.decode(
+            token,
+            settings.REFRESH_SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )

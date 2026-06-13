@@ -245,6 +245,11 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ render.yaml — Render deployment blueprint
 - ✅ alembic/ — database migrations
 - ✅ `.env.example` with all required config keys documented
+- ✅ `wcip-backend/.env.example` — backend placeholder-only local template
+- ✅ `wcip-frontend/.env.local.example` — frontend placeholder-only local template
+- ✅ `wcip-backend/scripts/generate_local_env.py` — secure local env generator
+- ✅ `scripts/check_repo_safety.py` + `make safety-check` — tracked artifact and secret scanner
+- ✅ `SECURITY_CLEANUP.md` — cleanup commands, secret rotation, and never-commit policy
 - 📋 GitHub Actions CI (backend pytest + frontend typecheck on push)
 - 📋 Frontend Jest / RTL unit tests
 - 📋 Playwright E2E tests
@@ -261,3 +266,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
   imports replace those placeholders team by team.
 - WC2026 official groups are loaded locally. The knockout bracket remains a
   placeholder structure until FIFA-published fixture slots are imported.
+- Several generated artifacts are currently tracked by Git, including Python
+  bytecode, local SQLite databases, ETL cache files, CatBoost logs, model
+  pickles, and zip archives. Run the `git rm --cached` commands in
+  `SECURITY_CLEANUP.md`, then `make safety-check`, before committing cleanup.

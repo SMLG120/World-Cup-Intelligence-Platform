@@ -7,29 +7,49 @@ overrides via real env vars / secrets.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import List
+from typing import Annotated, List
 
-from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
     )
 
     # --- general ---
-    PROJECT_NAME: str = "World Cup Intelligence Platform"
+    PROJECT_NAME: str = Field(
+        default="World Cup Intelligence Platform",
+        validation_alias=AliasChoices("APP_NAME", "PROJECT_NAME"),
+    )
     API_V1_PREFIX: str = "/api/v1"
-    ENVIRONMENT: str = "development"  # development | staging | production
+    ENVIRONMENT: str = Field(
+        default="development",
+        validation_alias=AliasChoices("APP_ENV", "ENVIRONMENT"),
+    )  # development | staging | production
     DEBUG: bool = True
+    LOG_LEVEL: str = "INFO"
 
     # --- security ---
     # MUST be overridden in production via env / secret manager.
-    SECRET_KEY: str = "dev-insecure-change-me-in-production-0123456789abcdef"
+    SECRET_KEY: str = Field(
+        default="dev-insecure-change-me-in-production-0123456789abcdef",
+        validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY"),
+    )
+    REFRESH_SECRET_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices("JWT_REFRESH_SECRET_KEY", "REFRESH_SECRET_KEY"),
+    )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    ALGORITHM: str = "HS256"
+    ALGORITHM: str = Field(
+        default="HS256",
+        validation_alias=AliasChoices("JWT_ALGORITHM", "ALGORITHM"),
+    )
 
     # --- database ---
     # Default to SQLite so local dev / CI runs with no Postgres.
@@ -44,7 +64,10 @@ class Settings(BaseSettings):
     CELERY_TASK_ALWAYS_EAGER: bool = False
 
     # --- CORS ---
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: Annotated[List[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:3000"],
+        validation_alias=AliasChoices("CORS_ORIGINS", "BACKEND_CORS_ORIGINS"),
+    )
 
     # --- rate limiting ---
     RATE_LIMIT_PER_MINUTE: int = 120
@@ -61,6 +84,8 @@ class Settings(BaseSettings):
 
     # --- data sources ---
     FOOTBALL_DATA_API_KEY: str = ""       # football-data.org free tier key
+    API_FOOTBALL_KEY: str = ""
+    FIFA_RANKING_SOURCE_URL: str = "https://inside.fifa.com/fifa-world-ranking/men"
 
     # --- ML ---
     ML_MODELS_DIR: str = "models"
@@ -74,6 +99,30 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
+
+    @model_validator(mode="after")
+    def _validate_production_secrets(self):
+        env = self.ENVIRONMENT.lower()
+        unsafe_values = {
+            "",
+            "change-me",
+            "change-me-to-a-long-random-string",
+            "dev-insecure-change-me",
+            "dev-insecure-change-me-in-production-0123456789abcdef",
+            "replace-with-generated-local-secret",
+            "replace-with-generated-local-refresh-secret",
+        }
+        if env == "production":
+            if self.SECRET_KEY in unsafe_values:
+                raise ValueError(
+                    "JWT_SECRET_KEY must be set to a strong production secret"
+                )
+            refresh_secret = self.REFRESH_SECRET_KEY or self.SECRET_KEY
+            if refresh_secret in unsafe_values:
+                raise ValueError(
+                    "JWT_REFRESH_SECRET_KEY must be set to a strong production secret"
+                )
+        return self
 
     @property
     def is_sqlite(self) -> bool:

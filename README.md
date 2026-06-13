@@ -372,18 +372,25 @@ cd wcip-backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+python scripts/generate_local_env.py
 uvicorn app.main:app --reload
 ```
 
 The backend defaults to SQLite at `wcip-backend/wcip.db`, in-memory cache, and no
 external services.
 
-Useful environment variables:
+Useful environment variables are documented in `wcip-backend/.env.example`.
+Use placeholders only in committed examples. Generate local-only secrets with
+`python scripts/generate_local_env.py`.
+
+Common backend variables:
 
 ```bash
+APP_ENV=development
 DATABASE_URL=sqlite:///./wcip.db
-SECRET_KEY=change-me
-BACKEND_CORS_ORIGINS=http://localhost:3000
+JWT_SECRET_KEY=replace-with-generated-local-secret
+JWT_REFRESH_SECRET_KEY=replace-with-generated-local-refresh-secret
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ETL_AUTO_RUN_ON_STARTUP=false
 FOOTBALL_DATA_API_KEY=
 ```
@@ -401,15 +408,58 @@ npm run dev
 ```
 
 The frontend dev server runs at `http://localhost:3000`.
+Frontend public variables are documented in
+`wcip-frontend/.env.local.example`. The API client accepts both
+`NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` and the older
+`NEXT_PUBLIC_API_BASE=/backend/api/v1` proxy form.
 
 ### Full Stack With Docker
 
 ```bash
 cd wcip-backend
+python scripts/generate_local_env.py
 docker compose up --build
 ```
 
 This starts the backend, worker, beat scheduler, Postgres, and Redis.
+Docker Compose reads local env values from `wcip-backend/.env`. Do not use these
+generated local secrets in production.
+
+## Security And Cleanup
+
+Repository safety docs:
+
+- `CODE_CLEANUP_AUDIT.md` — cleanup audit and tracked artifact findings
+- `SECURITY_CLEANUP.md` — cleanup commands, secret rotation, and local setup
+- `.env.example`, `wcip-backend/.env.example`, and
+  `wcip-frontend/.env.local.example` — placeholder-only templates
+
+Generate local env files:
+
+```bash
+cd wcip-backend
+python scripts/generate_local_env.py
+```
+
+Run the safety check:
+
+```bash
+make safety-check
+```
+
+Never commit:
+
+- `.env` or `.env.local`
+- local databases such as `wcip.db`
+- Python bytecode and `__pycache__`
+- `node_modules`, `.next`, and build output
+- ETL cache files
+- model artifacts such as `*.pkl`, `*.joblib`, or `*.onnx`
+- private keys, tokens, service-account files, or real API keys
+
+If a real secret is leaked, rotate it at the provider immediately, update
+Render/Vercel or your secret manager, remove the file from Git tracking, and run
+`make safety-check`.
 
 ## Common Workflows
 
@@ -486,6 +536,8 @@ curl -X POST http://localhost:8000/api/v1/tournament/simulate \
 ├── MODEL_CARD.md
 ├── ARCHITECTURE.md
 ├── API.md
+├── CODE_CLEANUP_AUDIT.md
+├── SECURITY_CLEANUP.md
 ├── FIFA_RANKINGS_AUDIT.md
 ├── world_cup_2026_audit.md
 ├── wcip-backend
@@ -538,6 +590,13 @@ npm run typecheck
 npm run build
 ```
 
+Safety:
+
+```bash
+python3 scripts/check_repo_safety.py
+git status --ignored
+```
+
 Note: in restricted sandboxes, the Monte Carlo tests may fail because
 `ProcessPoolExecutor` checks OS semaphore limits. Run the backend test command
 outside the sandbox if you see `PermissionError: Operation not permitted` from
@@ -559,11 +618,14 @@ outside the sandbox if you see `PermissionError: Operation not permitted` from
 
 ## Deployment Notes
 
-- Set a strong `SECRET_KEY` in production.
+- Set strong production `JWT_SECRET_KEY` and `JWT_REFRESH_SECRET_KEY` values
+  through Render, Vercel, or your secret manager.
+- Do not reuse local development secrets in production.
+- Never commit production `.env` files.
 - Use Postgres for production `DATABASE_URL`.
 - Use Redis for cache and Celery broker/result backend.
-- Set `BACKEND_CORS_ORIGINS` to the deployed frontend origin.
-- Set frontend API configuration to point at the deployed backend.
+- Set `CORS_ORIGINS` or `BACKEND_CORS_ORIGINS` to the deployed frontend origin.
+- Set `NEXT_PUBLIC_API_BASE_URL` to the deployed backend origin.
 - Run Alembic migrations before serving production traffic.
 - Run WC2026 seed ETL from a vetted source snapshot when tournament rosters are
   updated.
