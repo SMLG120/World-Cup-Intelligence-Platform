@@ -2,8 +2,18 @@ from pathlib import Path
 
 from app.db.base import SessionLocal
 from app.models.player import Player
+from app.services.probabilities import normalize_probabilities, validate_probability_distribution
+from scripts.validate_elo_csv import MANDATORY_TOP_ROWS, validate_rows
 from etl.player_ratings import import_player_ratings_csv
 from ml.features import FEATURE_NAMES, build_feature_vector
+
+
+def test_probability_helpers_normalize_and_validate_distribution():
+    probs = normalize_probabilities({"A": 2.0, "B": 1.0, "C": -5.0})
+    assert round(sum(probs.values()), 8) == 1.0
+    assert probs["A"] > probs["B"] > probs["C"]
+    assert validate_probability_distribution(probs)
+    assert not validate_probability_distribution({"A": 1.2, "B": -0.2})
 
 
 def test_winner_predictions_endpoint_returns_normalized_rows(client):
@@ -17,8 +27,43 @@ def test_winner_predictions_endpoint_returns_normalized_rows(client):
     assert "ml_probability" in rows[0]
     assert "statistical_probability" in rows[0]
     assert "ensemble_probability" in rows[0]
+    assert "elo_rating_used" in rows[0]
+    assert "elo_rank_used" in rows[0]
+    assert "elo_source" in rows[0]
+    assert "elo_source_date" in rows[0]
+    assert "elo_snapshot_version" in rows[0]
     total = sum(row["champion_probability"] for row in rows)
-    assert 99.9 <= total <= 100.1
+    assert 0.999 <= total <= 1.001
+    assert all(0 <= row["champion_probability"] <= 1 for row in rows)
+    assert all(0 <= row["ensemble_probability"] <= 1 for row in rows)
+
+
+def test_elo_csv_top_six_rows_validate_without_full_extract():
+    rows = [
+        {
+            "rank": str(rank),
+            "team": team,
+            "rating": str(rating),
+            "average_rank": "1",
+            "average_rating": str(rating),
+            "one_year_change_rank": "0",
+            "one_year_change_rating": "0",
+            "matches_total": "1",
+            "matches_home": "0",
+            "matches_away": "0",
+            "matches_neutral": "1",
+            "wins": "1",
+            "losses": "0",
+            "draws": "0",
+            "goals_for": "1",
+            "goals_against": "0",
+            "source_name": "World Football Elo Ratings PDF",
+            "source_date": "2026-06-21",
+        }
+        for team, rank, rating in MANDATORY_TOP_ROWS
+    ]
+    result = validate_rows(rows, require_full_extract=False, check_db_teams=False)
+    assert result["mandatory_top_rows"] == 6
 
 
 def test_winner_predictions_default_seed_uses_entropy(client):

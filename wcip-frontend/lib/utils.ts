@@ -9,6 +9,34 @@ export function pct(value: number, digits = 1): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+export function normalizeProbabilityValue(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[probability] Invalid probability value normalized to 0", value);
+    }
+    return 0;
+  }
+
+  let normalized = value;
+  if (normalized > 1) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[probability] Legacy percent-unit probability normalized", value);
+    }
+    normalized = normalized / 100;
+  }
+
+  if (normalized < 0 || normalized > 1) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[probability] Out-of-range probability clamped", value);
+    }
+  }
+  return Math.min(1, Math.max(0, normalized));
+}
+
+export function formatProbability(value: number | null | undefined, digits = 1): string {
+  return `${(normalizeProbabilityValue(value) * 100).toFixed(digits)}%`;
+}
+
 export function ordinal(n: number): string {
   const rounded = Math.round(n);
   const s = ["th", "st", "nd", "rd"];

@@ -6,6 +6,12 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.services.probabilities import (
+    normalize_probabilities,
+    normalize_probability_value,
+    validate_probability_distribution,
+)
+
 
 def world_cup_2026_winner_predictions(
     *,
@@ -31,6 +37,7 @@ def world_cup_2026_winner_predictions(
     from ml.features import (
         _get_coach_impact,
         _get_form,
+        _get_team_elo_metadata,
         _get_player_strength_stats,
         _get_team_elo,
         _get_team_fifa_rank,
@@ -95,12 +102,12 @@ def world_cup_2026_winner_predictions(
     seed_to_use = int(seed) if seed is not None else (12345 if deterministic else generate_seed())
     engine = MonteCarloEngine(teams_dict, groups, bracket)
     statistical = engine.run(n_runs=runs, workers=workers, seed=seed_to_use)
-    stat_probs = _normalize({
+    stat_probs = normalize_probabilities({
         team: probs.champion for team, probs in statistical.items()
     })
     ml_probs = _ml_strength_probabilities(strength_inputs)
     uniform = 1.0 / max(len(teams_dict), 1)
-    ensemble_probs = _normalize({
+    ensemble_probs = normalize_probabilities({
         team: (
             0.42 * stat_probs.get(team, 0.0)
             + 0.48 * ml_probs.get(team, 0.0)
@@ -115,6 +122,7 @@ def world_cup_2026_winner_predictions(
         sim = statistical[team]
         meta = meta_by_team.get(team, {})
         strengths = strength_inputs[team]
+        elo_meta = _get_team_elo_metadata(team)
         rows.append(
             {
                 "rank": 0,
@@ -126,25 +134,29 @@ def world_cup_2026_winner_predictions(
                 "group": group_by_team.get(team),
                 "confederation": meta.get("confederation") or teams_dict[team].confederation,
                 "fifa_rank": int(strengths["fifa_rank"]),
-                "elo_rating_used": round(float(strengths["elo"]), 3),
+                "elo_rating_used": round(float(elo_meta.get("elo_rating_used", strengths["elo"])), 3),
+                "elo_rank_used": elo_meta.get("elo_rank_used"),
+                "elo_source": elo_meta.get("elo_source"),
+                "elo_source_date": elo_meta.get("elo_source_date"),
+                "elo_snapshot_version": elo_meta.get("elo_snapshot_version"),
                 "fifa_ranking_used": int(strengths["fifa_rank"]),
                 "data_snapshot": freshness.get("data_snapshot_timestamp") or freshness.get("generated_at"),
                 "data_snapshot_version": freshness.get("data_snapshot_version"),
                 "player_data_freshness_timestamp": freshness.get("last_player_data_update"),
                 "model_version": freshness.get("model_version"),
                 "prediction_type": "ensemble",
-                "champion_probability": _pct(ensemble_probability),
-                "final_probability": _pct(sim.final),
-                "semifinal_probability": _pct(sim.semi),
-                "quarterfinal_probability": _pct(sim.quarter),
-                "round_of_16_probability": _pct(sim.round_of_16),
-                "group_qualification_probability": _pct(getattr(sim, "round_of_32", 0.0)),
+                "champion_probability": _prob(ensemble_probability),
+                "final_probability": _prob(sim.final),
+                "semifinal_probability": _prob(sim.semi),
+                "quarterfinal_probability": _prob(sim.quarter),
+                "round_of_16_probability": _prob(sim.round_of_16),
+                "group_qualification_probability": _prob(getattr(sim, "round_of_32", 0.0)),
                 "expected_finish": round(sim.expected_finish, 3),
-                "confidence_interval_low": _pct(sim.champion_ci_low),
-                "confidence_interval_high": _pct(sim.champion_ci_high),
-                "statistical_probability": _pct(stat_probs.get(team, 0.0)),
-                "ml_probability": _pct(ml_probs.get(team, 0.0)),
-                "ensemble_probability": _pct(ensemble_probability),
+                "confidence_interval_low": _prob(sim.champion_ci_low),
+                "confidence_interval_high": _prob(sim.champion_ci_high),
+                "statistical_probability": _prob(stat_probs.get(team, 0.0)),
+                "ml_probability": _prob(ml_probs.get(team, 0.0)),
+                "ensemble_probability": _prob(ensemble_probability),
                 "explanation": _explain_team(team, strengths, stat_probs.get(team, 0.0), ml_probs.get(team, 0.0)),
             }
         )
@@ -152,8 +164,16 @@ def world_cup_2026_winner_predictions(
     rows.sort(key=lambda row: row["champion_probability"], reverse=True)
     for idx, row in enumerate(rows, start=1):
         row["rank"] = idx
-    _normalize_percentage_field(rows, "champion_probability")
-    _normalize_percentage_field(rows, "ensemble_probability")
+    _normalize_probability_field(rows, "champion_probability")
+    _normalize_probability_field(rows, "ensemble_probability")
+    if not validate_probability_distribution({row["team_name"]: row["champion_probability"] for row in rows}):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": "invalid_probability_distribution",
+                "message": "Winner predictions did not produce a valid probability distribution.",
+            },
+        )
     return rows
 
 
@@ -192,32 +212,19 @@ def _softmax(scores: dict[str, float], *, temperature: float) -> dict[str, float
         key: math.exp((value - max_score) * temperature)
         for key, value in scores.items()
     }
-    return _normalize(exps)
+    return normalize_probabilities(exps)
 
 
-def _normalize(values: dict[str, float]) -> dict[str, float]:
-    clean = {
-        key: max(0.0, float(value)) if math.isfinite(float(value)) else 0.0
-        for key, value in values.items()
-    }
-    total = sum(clean.values())
-    if total <= 0:
-        count = max(len(values), 1)
-        return {key: 1.0 / count for key in values}
-    return {key: value / total for key, value in clean.items()}
-
-
-def _normalize_percentage_field(rows: list[dict[str, Any]], field: str) -> None:
+def _normalize_probability_field(rows: list[dict[str, Any]], field: str) -> None:
     total = sum(float(row[field]) for row in rows)
     if total <= 0:
         return
-    scale = 100.0 / total
     for row in rows:
-        row[field] = round(float(row[field]) * scale, 4)
+        row[field] = _prob(float(row[field]) / total)
 
 
-def _pct(value: float) -> float:
-    return round(max(0.0, min(1.0, float(value))) * 100.0, 4)
+def _prob(value: float) -> float:
+    return round(normalize_probability_value(value), 6)
 
 
 def _team_id(team_name: str) -> int | None:

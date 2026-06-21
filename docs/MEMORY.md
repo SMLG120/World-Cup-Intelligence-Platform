@@ -105,6 +105,16 @@ in production.
   player-feature NaN/inf safety.
 - `ml.retrain_if_needed` marks active model registry rows for recalibration only
   when data changes cross configured thresholds.
+- Winner prediction probabilities are backend/API fractions (`0.0` to `1.0`).
+  Use frontend `formatProbability()` for display and
+  `normalizeProbabilityValue()` only as a defensive legacy compatibility layer.
+- Static World Football Elo PDF workflow:
+  `python -m scripts.convert_elo_pdf_to_csv`,
+  `python -m scripts.validate_elo_csv`, then
+  `python -m etl.elo.load_elo_csv`. The current static snapshot is
+  `elo-pdf-2026-06-21-960500577039`, source date `2026-06-21`, 244 rows, 57
+  local team matches. Local OCR was unavailable in this run, so the converter
+  used the official `World.tsv` fallback after validating the PDF top six.
 
 ## RAG System
 

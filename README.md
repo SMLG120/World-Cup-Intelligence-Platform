@@ -42,9 +42,19 @@ Data-source boundaries matter:
 
 - Elo comes from World Football Elo sources such as `eloratings.net`, with an
   embedded Elo fallback only when live sources are unavailable.
+- The static World Football Elo PDF snapshot dated 2026-06-21 can be converted
+  with `python -m scripts.convert_elo_pdf_to_csv` and loaded with
+  `python -m etl.elo.load_elo_csv`. The generated CSV is
+  `wcip-backend/data/processed/world_football_elo_ratings_2026_06_21.csv`;
+  validation requires 244 teams in the current extract and top rows Spain 2129,
+  Argentina 2128, France 2084, England 2055, Colombia 1998, Brazil 1986.
 - FIFA rankings come from the official FIFA men's ranking source.
 - Squad/player facts come from the FIFA WC2026 squad PDF and feed player/squad
   features. The PDF is not used as an Elo or FIFA ranking source.
+
+Probability API fields use fraction units internally and over the wire:
+`0.14232` means `14.2%`. Frontend display helpers multiply by 100 once and
+defensively normalize legacy percent-unit responses.
 
 `GET /api/v1/data/freshness` exposes the frontend freshness fields: Elo updated,
 FIFA ranking updated, squad data updated, latest results updated, model trained,

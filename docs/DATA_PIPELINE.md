@@ -201,9 +201,41 @@ away_win:  13,934  (27.8%)
 ### Source Details
 - **Primary URL:** `https://www.eloratings.net/2026_World_Cup`
 - **Fallback URL:** `https://www.eloratings.net/World.tsv`
+- **Static PDF snapshot:** `data/processed/world_football_elo_ratings_2026_06_21.csv`
+  generated from the 2026-06-21 World Football Elo Ratings PDF workflow
 - **License:** Public data; attribution appreciated
 - **Coverage:** All FIFA-affiliated national teams, current ratings
 - **Format:** TSV (tab-separated)
+
+### Static PDF Snapshot Workflow
+
+The 2026-06-21 image-based PDF is handled by:
+
+```bash
+cd wcip-backend
+python -m scripts.convert_elo_pdf_to_csv "/Users/smlgmac/Downloads/World Football Elo Ratings.pdf"
+python -m scripts.validate_elo_csv data/processed/world_football_elo_ratings_2026_06_21.csv
+python -m etl.elo.load_elo_csv data/processed/world_football_elo_ratings_2026_06_21.csv
+```
+
+The converter first tries a PDF text layer, then image OCR. In this local run
+macOS Vision returned OCR observations but no parseable rows, so the converter
+used the official `World.tsv`/`en.teams.tsv` fallback from the same World
+Football Elo site and validated the mandatory PDF top six before writing CSV.
+The loaded snapshot version is `elo-pdf-2026-06-21-960500577039`, with 244 Elo
+rows and 57 local team matches. Static PDF metadata is stored in
+`team_elo_ratings.raw_payload` and `elo_source_logs.metadata_json`.
+
+Mandatory top-six validation:
+
+```text
+Spain 1 2129
+Argentina 2 2128
+France 3 2084
+England 4 2055
+Colombia 5 1998
+Brazil 6 1986
+```
 
 ### Extract Step
 **Files:** `etl/elo/extract_elo.py`, legacy compatibility in `etl/extract/elo_ratings.py`

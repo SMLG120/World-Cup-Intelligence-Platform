@@ -11,6 +11,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `etl/extract/international_results.py` — martj42 CSV download + caching + parse (49K rows)
 - ✅ `etl/extract/elo_ratings.py` — eloratings.net TSV fetch + embedded fallback snapshot
 - ✅ `etl/elo/` — versioned World Football Elo snapshots, validation, loader, source logs
+- ✅ `scripts/convert_elo_pdf_to_csv.py` / `scripts/validate_elo_csv.py` /
+  `etl/elo/load_elo_csv.py` — static 2026-06-21 World Football Elo PDF CSV
+  workflow with top-six validation and immutable snapshot loading
 - ✅ `etl/extract/football_data.py` — football-data.org API client (rate-limited 6.5s)
 - ✅ `etl/extract/fifa_rankings.py` — official FIFA ranking snapshot fetch + validation
 - ✅ `etl/fifa_rankings/` — dedicated FIFA ranking ETL package around the canonical official snapshot loader
@@ -63,6 +66,10 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ FIFA ranking versioning / snapshot tagging
 - ✅ Ranking source logging for fetch/load traceability
 - ✅ Elo source logging for fetch/load traceability
+- ✅ Static Elo PDF CSV snapshot loaded as `elo-pdf-2026-06-21-960500577039`
+  with 244 rows, 57 local team matches, and PDF top-six validation
+- ✅ Prediction probability contract: backend JSON uses fractions `0.0` to
+  `1.0`; frontend formatting multiplies by 100 once and guards legacy values
 - ✅ Legal CSV player-rating import with validation and versioning
 - ✅ Official FIFA squad-list CSV generation for Teams, Scenarios, and player-strength ML features
 - ✅ Official FIFA squad PDF ingestion validation: local DB currently validates with 1,254 players and 48 coaches
