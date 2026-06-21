@@ -9,6 +9,7 @@ from app.api.v1 import (
     matches,
     ml,
     players,
+    rag,
     rankings,
     ratings,
     scenarios,
@@ -34,3 +35,5 @@ api_router.include_router(ml.router)
 api_router.include_router(ml.admin_router)
 api_router.include_router(world_cup.router)
 api_router.include_router(world_cup.alias_router)
+api_router.include_router(rag.router)
+api_router.include_router(rag.admin_router)

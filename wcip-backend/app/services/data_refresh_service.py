@@ -69,6 +69,90 @@ def refresh_all_data() -> dict[str, Any]:
     return {"status": status, "results": results}
 
 
+def refresh_all_live_football_data() -> dict[str, Any]:
+    """Coordinated refresh of all live football data sources.
+
+    Runs in a fixed, safe order:
+      1. Match results  — latest scores and fixtures
+      2. Elo ratings    — updated world rankings from eloratings.net / Wikipedia fallback
+      3. FIFA rankings  — latest official FIFA publication
+      4. Player data    — squad/availability CSV if present
+      5. Prediction cache — invalidate stale predictions
+      6. Retraining check — mark models for recalibration if data changed materially
+
+    Each step is fault-tolerant: a failure in one source does not block the others.
+    All steps are idempotent; running this twice is safe.
+    """
+    started_at = _iso(datetime.now(timezone.utc))
+    results: dict[str, Any] = {}
+    step_log: list[dict[str, Any]] = []
+
+    def _step(name: str, fn) -> dict[str, Any]:
+        logger.info("refresh_all_live_football_data: starting %s", name)
+        result = fn()
+        step_log.append({"step": name, "status": result.get("status"), "at": _iso(datetime.now(timezone.utc))})
+        logger.info("refresh_all_live_football_data: %s → %s", name, result.get("status"))
+        return result
+
+    # 1. Latest match results (martj42 CSV → MatchResult table)
+    results["match_results"] = _step("match_results", refresh_world_cup_results)
+
+    # 2. Elo ratings (eloratings.net → Wikipedia fallback → embedded fallback)
+    results["elo"] = _step("elo", refresh_elo_ratings)
+
+    # 3. FIFA rankings
+    results["fifa_rankings"] = _step("fifa_rankings", refresh_fifa_rankings)
+
+    # 4. Player availability / squad CSV
+    results["player_availability"] = _step("player_availability", refresh_player_availability)
+
+    # 5. Invalidate prediction cache so fresh data is used next request
+    results["prediction_cache"] = _step("prediction_cache", refresh_prediction_cache)
+
+    # 6. Evaluate whether updated data warrants model recalibration
+    try:
+        from ml.retrain_if_needed import evaluate_retraining_need
+
+        match_inserted = int((results["match_results"].get("result") or {}).get("inserted") or 0)
+        elo_inner = results["elo"].get("result") or {}
+        elo_changed = int(elo_inner.get("entries_inserted") or 0) + int(elo_inner.get("entries_replaced") or 0)
+        fifa_inner = results["fifa_rankings"].get("result") or {}
+        ranking_changes = int(fifa_inner.get("material_changes") or 0)
+        player_inner = results["player_availability"].get("result") or {}
+        player_changed = int(player_inner.get("valid_rows") or 0) if player_inner.get("status") not in (None, "skipped") else 0
+
+        retrain_report = evaluate_retraining_need(
+            material_ranking_changes=ranking_changes,
+            material_elo_changes=elo_changed,
+            changed_player_records=player_changed,
+            changed_match_results=match_inserted,
+            apply=True,
+        )
+        results["retraining_check"] = {"status": "ok", "result": retrain_report}
+        step_log.append({"step": "retraining_check", "status": "ok", "action": retrain_report.get("action"), "at": _iso(datetime.now(timezone.utc))})
+        logger.info(
+            "refresh_all_live_football_data: retraining_check → action=%s reasons=%s",
+            retrain_report.get("action"),
+            retrain_report.get("reasons"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("refresh_all_live_football_data: retraining_check failed")
+        results["retraining_check"] = {"status": "failed", "detail": str(exc)}
+        step_log.append({"step": "retraining_check", "status": "failed"})
+
+    ok_statuses = sum(1 for v in results.values() if v.get("status") == "ok")
+    overall = "ok" if ok_statuses == len(results) else ("partial" if ok_statuses > 0 else "failed")
+
+    return {
+        "task": "refresh_all_live_football_data",
+        "status": overall,
+        "started_at": started_at,
+        "finished_at": _iso(datetime.now(timezone.utc)),
+        "steps": step_log,
+        "results": results,
+    }
+
+
 def get_data_freshness() -> dict[str, Any]:
     db = SessionLocal()
     try:

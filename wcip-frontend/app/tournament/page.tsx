@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function TournamentRedirect() {
-  redirect("/world-cup");
+  redirect("/wc2026/bracket");
 }

@@ -16,6 +16,7 @@ from typing import Any, Iterable
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache
 from app.db.base import SessionLocal
 from app.models.match_result import QualifiedTeam
 from app.models.player import Coach, Player
@@ -137,6 +138,7 @@ def run_wc2026_seed(
     finally:
         db.close()
 
+    cache.invalidate_prefix("teams:")
     logger.info("WC2026 seed ETL complete: %s", result)
     return result
 

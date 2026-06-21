@@ -797,3 +797,50 @@ fields, the generated player profile says the data is incomplete.
 6. **Elo history backfill:** New Elo snapshots are preserved going forward.
    Older historical Elo snapshots still need backfill if you want non-neutral
    Elo for dates before the first stored snapshot/history row.
+
+---
+
+## RAG Retrieval Pipeline
+
+The RAG layer adds explanation and retrieval over indexed knowledge without affecting
+prediction logic.
+
+```
+DB Records (teams · players · coaches · wc2026 groups)
+     │
+     ├─ fetch_all_documents()   [rag/sources.py]
+     │
+     ▼
+chunk_text()                   [rag/chunking.py]
+(200-token overlapping chunks, newline + sentence splitting)
+     │
+     ▼
+TF-IDF indexing                [rag/indexer.py]
+(top-50 terms per chunk, stored as JSON in rag_embeddings)
+     │
+     ▼
+rag_documents / rag_chunks / rag_embeddings   (SQLite tables)
+
+At query time:
+     │
+POST /api/v1/rag/ask
+     │
+retrieve()                     [rag/retriever.py]
+(TF-IDF cosine-like scoring + doc_type + team_id filters)
+     │
+     ▼
+generate_answer()              [rag/generator.py]
+(template assembly from top-k chunks; never outputs win predictions)
+     │
+     ▼
+answer_question()              [rag/service.py]
+(logs query + answer to rag_queries / rag_answers tables)
+     │
+     ▼
+RagAnswer (answer, chunks, citations, confidence, warnings)
+```
+
+**Security constraints enforced in `rag/sources.py`:**
+- Never reads `.env`, secrets, API keys, JWT tokens, or DB credentials
+- Never indexes local file paths, passwords, or authentication data
+- Only indexes public factual data: team stats, player rosters, model names/descriptions

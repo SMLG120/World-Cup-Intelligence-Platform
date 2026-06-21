@@ -7,8 +7,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, ReferenceLine, Legend,
 } from "recharts";
+import { api } from "@/lib/api";
 import { useCompareScenarios, useTeams } from "@/lib/queries";
-import { NEUTRAL_MODIFIERS, TeamModifiers } from "@/lib/types";
+import { HybridPrediction, NEUTRAL_MODIFIERS, Player, TeamModifiers } from "@/lib/types";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
@@ -21,6 +22,11 @@ interface ScenarioDraft {
   label: string;
   team: string;
   mods: TeamModifiers;
+}
+
+interface PlayerImpactResult {
+  baseline: HybridPrediction;
+  adjusted: HybridPrediction;
 }
 
 const RUN_OPTIONS = [1000, 2000, 5000];
@@ -38,6 +44,133 @@ const ACCENT_COLOURS = [
 ];
 const KICKER_COLOURS = ["text-pitch", "text-[hsl(200_90%_62%)]", "text-[hsl(280_70%_68%)]"];
 const BORDER_COLOURS = ["border-pitch/40", "border-[hsl(200_90%_62%/0.4)]", "border-[hsl(280_70%_68%/0.4)]"];
+
+function unavailableShare(players: Player[]) {
+  if (!players.length) return 0;
+  return players.filter((player) => player.injured || player.suspended).length / players.length;
+}
+
+function togglePlayer(players: Player[], id: number, field: "injured" | "suspended") {
+  return players.map((player) => (
+    player.id === id ? { ...player, [field]: !player[field] } : player
+  ));
+}
+
+function PlayerAvailabilityTable({
+  label,
+  players,
+  onToggle,
+}: {
+  label: string;
+  players: Player[];
+  onToggle: (id: number, field: "injured" | "suspended") => void;
+}) {
+  const unavailable = players.filter((player) => player.injured || player.suspended).length;
+  return (
+    <div className="rounded-lg border border-line">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2">
+        <span className="kicker">{label}</span>
+        <span className="text-xs text-muted">
+          {players.length ? `${unavailable}/${players.length} unavailable` : "No squad loaded"}
+        </span>
+      </div>
+      <div className="max-h-72 overflow-y-auto p-2">
+        {players.length ? (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-line/50 text-muted">
+                <th className="py-1 text-left font-normal">Player</th>
+                <th className="py-1 text-left font-normal">Pos</th>
+                <th className="py-1 text-right font-normal">Caps</th>
+                <th className="py-1 text-right font-normal">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {players.map((player) => (
+                <tr key={player.id} className="border-b border-line/30 last:border-0">
+                  <td className="py-1.5 pr-2">
+                    <div className="font-medium text-fg">{player.name}</div>
+                    <div className="text-[10px] text-muted">{player.club ?? "Club unavailable"}</div>
+                  </td>
+                  <td className="py-1.5 text-muted">{player.position}</td>
+                  <td className="py-1.5 text-right tnum text-muted">{player.international_caps ?? 0}</td>
+                  <td className="py-1.5 text-right">
+                    <div className="inline-flex gap-1">
+                      <button
+                        onClick={() => onToggle(player.id, "injured")}
+                        className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+                          player.injured
+                            ? "border-signal/50 bg-signal/10 text-signal"
+                            : "border-line text-muted hover:text-fg"
+                        }`}
+                      >
+                        Inj
+                      </button>
+                      <button
+                        onClick={() => onToggle(player.id, "suspended")}
+                        className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+                          player.suspended
+                            ? "border-amber-500/50 bg-amber-500/10 text-amber-500"
+                            : "border-line text-muted hover:text-fg"
+                        }`}
+                      >
+                        Susp
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="py-8 text-center text-sm text-muted">
+            Load squads to edit player availability for this scenario.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PlayerImpactSummary({ result }: { result: PlayerImpactResult }) {
+  const rows = [
+    {
+      label: result.adjusted.home_team,
+      before: result.baseline.ensemble.home_win,
+      after: result.adjusted.ensemble.home_win,
+    },
+    {
+      label: "Draw",
+      before: result.baseline.ensemble.draw,
+      after: result.adjusted.ensemble.draw,
+    },
+    {
+      label: result.adjusted.away_team,
+      before: result.baseline.ensemble.away_win,
+      after: result.adjusted.ensemble.away_win,
+    },
+  ];
+  return (
+    <div className="rounded-lg border border-line p-3">
+      <p className="kicker mb-2">Before and after probability delta</p>
+      <div className="space-y-2">
+        {rows.map((row) => {
+          const delta = row.after - row.before;
+          return (
+            <div key={row.label} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 text-xs">
+              <span className="truncate text-fg">{row.label}</span>
+              <span className="tnum text-muted">{pct(row.before)}</span>
+              <span className="tnum text-fg">{pct(row.after)}</span>
+              <span className={`tnum font-semibold ${delta >= 0 ? "text-pitch" : "text-signal"}`}>
+                {delta >= 0 ? "+" : ""}{pct(delta)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ── Scenario card ─────────────────────────────────────────────────────────────
 
@@ -204,6 +337,14 @@ export default function ScenariosPage() {
   const { data: teamsData } = useTeams();
   const compare = useCompareScenarios();
   const [runs, setRuns] = useState(2000);
+  const [playerHome, setPlayerHome] = useState("France");
+  const [playerAway, setPlayerAway] = useState("Brazil");
+  const [homePlayers, setHomePlayers] = useState<Player[]>([]);
+  const [awayPlayers, setAwayPlayers] = useState<Player[]>([]);
+  const [playerImpact, setPlayerImpact] = useState<PlayerImpactResult | null>(null);
+  const [playerLoading, setPlayerLoading] = useState(false);
+  const [playerPredicting, setPlayerPredicting] = useState(false);
+  const [playerError, setPlayerError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioDraft[]>([
     { label: "Baseline", team: "", mods: { ...NEUTRAL_MODIFIERS } },
     { label: "What-if A", team: "France", mods: { ...NEUTRAL_MODIFIERS, injury: 0.75 } },
@@ -224,9 +365,51 @@ export default function ScenariosPage() {
   const removeScenario = (i: number) =>
     setScenarios((s) => s.length <= 2 ? s : s.filter((_, idx) => idx !== i));
 
+  async function loadScenarioSquads() {
+    setPlayerLoading(true);
+    setPlayerError(null);
+    try {
+      const [home, away] = await Promise.all([
+        api.wc2026Players(playerHome),
+        api.wc2026Players(playerAway),
+      ]);
+      setHomePlayers(home.squad);
+      setAwayPlayers(away.squad);
+      setPlayerImpact(null);
+    } catch (err) {
+      setPlayerError((err as Error).message || "Squads could not be loaded.");
+    } finally {
+      setPlayerLoading(false);
+    }
+  }
+
+  async function runPlayerImpact() {
+    setPlayerPredicting(true);
+    setPlayerError(null);
+    try {
+      const baseline = await api.mlPredict({
+        home_team: playerHome,
+        away_team: playerAway,
+        include_shap: false,
+      });
+      const adjusted = await api.mlPredict({
+        home_team: playerHome,
+        away_team: playerAway,
+        home_overrides: { injury_burden: unavailableShare(homePlayers) },
+        away_overrides: { injury_burden: unavailableShare(awayPlayers) },
+        include_shap: true,
+      });
+      setPlayerImpact({ baseline, adjusted });
+    } catch (err) {
+      setPlayerError((err as Error).message || "Player impact prediction failed.");
+    } finally {
+      setPlayerPredicting(false);
+    }
+  }
+
   const run = () =>
     compare.mutate({
-      edition: "2022",
+      edition: "2026",
       runs,
       scenarios: scenarios.map((sc) => ({
         label: sc.label,
@@ -279,6 +462,93 @@ export default function ScenariosPage() {
           </button>
         )}
       </div>
+
+      {/* Player availability controls moved from the old Lab page */}
+      <Card>
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span className="kicker">Player availability</span>
+            <p className="mt-1 text-xs text-muted">
+              Load real squad data, mark injuries or suspensions, and compare the before/after match probability.
+            </p>
+          </div>
+          <Link href="/predict">
+            <Button variant="ghost" size="sm">Open Predict</Button>
+          </Link>
+        </CardHeader>
+        <CardBody className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto] md:items-end">
+            <div>
+              <span className="kicker block mb-1.5">Home team</span>
+              <select
+                value={playerHome}
+                onChange={(event) => setPlayerHome(event.target.value)}
+                className="w-full rounded-md border border-line bg-elevated px-3 py-2 text-sm text-fg focus:outline-none focus:border-pitch"
+              >
+                {(teamNames.length ? teamNames : [playerHome]).map((team) => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <span className="kicker block mb-1.5">Away team</span>
+              <select
+                value={playerAway}
+                onChange={(event) => setPlayerAway(event.target.value)}
+                className="w-full rounded-md border border-line bg-elevated px-3 py-2 text-sm text-fg focus:outline-none focus:border-pitch"
+              >
+                {(teamNames.length ? teamNames : [playerAway]).map((team) => (
+                  <option key={team} value={team}>{team}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              variant="outline"
+              onClick={loadScenarioSquads}
+              disabled={playerLoading || playerHome === playerAway}
+            >
+              {playerLoading ? "Loading..." : "Load Squads"}
+            </Button>
+            <Button
+              onClick={runPlayerImpact}
+              disabled={playerPredicting || playerHome === playerAway}
+            >
+              {playerPredicting ? "Running..." : "Run Match Delta"}
+            </Button>
+          </div>
+
+          {playerHome === playerAway && (
+            <p className="text-xs text-signal">Choose two different teams for player availability scenarios.</p>
+          )}
+          {playerError && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-signal/30 bg-signal/10 px-3 py-2 text-sm">
+              <span className="text-signal">{playerError}</span>
+              <Button variant="outline" size="sm" onClick={loadScenarioSquads}>Retry squads</Button>
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <PlayerAvailabilityTable
+              label={playerHome}
+              players={homePlayers}
+              onToggle={(id, field) => {
+                setHomePlayers((players) => togglePlayer(players, id, field));
+                setPlayerImpact(null);
+              }}
+            />
+            <PlayerAvailabilityTable
+              label={playerAway}
+              players={awayPlayers}
+              onToggle={(id, field) => {
+                setAwayPlayers((players) => togglePlayer(players, id, field));
+                setPlayerImpact(null);
+              }}
+            />
+          </div>
+
+          {playerImpact && <PlayerImpactSummary result={playerImpact} />}
+        </CardBody>
+      </Card>
 
       {/* Run controls */}
       <Card>

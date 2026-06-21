@@ -6,16 +6,34 @@ import type { PredictionMode, Team } from "./types";
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
 
-export function useTeams(confederation?: string) {
+export function useTeams(confederation?: string, worldCupOnly = true) {
   return useQuery({
-    queryKey: ["teams", confederation ?? "all"],
-    queryFn: () => api.teams(confederation),
+    queryKey: ["teams", confederation ?? "all", worldCupOnly ? "wc2026" : "all"],
+    queryFn: () => api.teams(confederation, worldCupOnly),
     staleTime: 5 * 60 * 1000,
   });
 }
 
 export function useTeam(id: number) {
   return useQuery({ queryKey: ["team", id], queryFn: () => api.team(id), enabled: !!id });
+}
+
+export function useTeamPlayers(id: number, enabled = true) {
+  return useQuery({
+    queryKey: ["team-players", id],
+    queryFn: () => api.teamPlayers(id),
+    enabled: enabled && Number.isFinite(id) && id > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useTeamSquad(id: number, enabled = true) {
+  return useQuery({
+    queryKey: ["team-squad", id],
+    queryFn: () => api.teamSquad(id),
+    enabled: enabled && Number.isFinite(id) && id > 0,
+    staleTime: 5 * 60 * 1000,
+  });
 }
 
 export function usePlayer(id: number, enabled = true) {

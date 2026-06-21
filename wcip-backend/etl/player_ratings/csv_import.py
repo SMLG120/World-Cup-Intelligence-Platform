@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import delete, select
 
+from app.core.cache import cache
 from app.db.base import SessionLocal
 from app.models.player import Player, PlayerRatingImport, PlayerRatingRecord
 from etl.players.profiles import build_player_profile
@@ -150,6 +151,7 @@ def import_player_ratings_csv(
         "teams_updated": len(touched_teams),
         "status": batch.status,
     }
+    cache.invalidate_prefix("teams:")
     logger.info("Player rating import complete: %s", result)
     return result
 

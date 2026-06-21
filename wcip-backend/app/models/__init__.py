@@ -10,6 +10,8 @@ from app.models.simulation import (SavedScenario, SimKind, Simulation,  # noqa: 
 from app.models.team import (EloHistory, EloRatingSnapshot, EloSourceLog,  # noqa: F401
                              Team, TeamEloRating)
 from app.models.user import AuditLog, User, UserRole  # noqa: F401
+from app.models.rag import (RagDocument, RagChunk, RagEmbedding,  # noqa: F401
+                             RagQuery, RagAnswer)
 
 __all__ = [
     "User", "UserRole", "AuditLog",
@@ -18,4 +20,5 @@ __all__ = [
     "Player", "Coach", "PlayerRatingImport", "PlayerRatingRecord",
     "FifaRankingSnapshot", "FifaRankingEntry", "TeamRanking", "RankingSourceLog",
     "MatchResult", "MatchFeatures", "MLModelRecord", "QualifiedTeam",
+    "RagDocument", "RagChunk", "RagEmbedding", "RagQuery", "RagAnswer",
 ]

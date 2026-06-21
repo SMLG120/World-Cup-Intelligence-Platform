@@ -13,7 +13,6 @@ import { X, User, ShieldAlert } from "lucide-react";
 import { useWC2026Players, useWC2026TeamDetail } from "@/lib/queries";
 import type { Player } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { pct } from "@/lib/utils";
 
 // ── Position config ───────────────────────────────────────────────────────────
 const POSITION_ORDER = ["GK", "DEF", "MID", "FWD"] as const;

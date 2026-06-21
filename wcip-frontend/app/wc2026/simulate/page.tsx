@@ -1,3 +1,5 @@
-import WorldCupPage from "@/app/world-cup/page";
+import { redirect } from "next/navigation";
 
-export default WorldCupPage;
+export default function WC2026SimulateRedirect() {
+  redirect("/wc2026/bracket");
+}

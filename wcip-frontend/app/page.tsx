@@ -46,8 +46,8 @@ export default function LandingPage() {
         transition={{ delay: 0.2 }}
         className="mt-8 flex flex-wrap gap-3"
       >
-        <Link href="/register"><Button size="lg">Get started</Button></Link>
-        <Link href="/simulate"><Button size="lg" variant="outline">Try a match</Button></Link>
+        <Link href="/wc2026"><Button size="lg">Open WC 2026</Button></Link>
+        <Link href="/predict"><Button size="lg" variant="outline">Try a match</Button></Link>
       </motion.div>
 
       <div className="mt-10 max-w-4xl">

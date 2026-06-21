@@ -23,14 +23,22 @@ class TeamOut(BaseModel):
     id: int
     name: str
     code: str
+    fifa_code: Optional[str] = None
     confederation: str
     elo: float
+    elo_rating: Optional[float] = None
     fifa_rank: int
+    fifa_ranking: Optional[int] = None
+    group: Optional[str] = None
+    group_label: Optional[str] = None
+    coach: Optional[str] = None
+    squad_count: int = 0
 
 
 class PlayerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    team_id: Optional[int] = None
     name: str
     team_name: str
     position: str
@@ -63,6 +71,13 @@ class PlayerOut(BaseModel):
     fitness_score: float
     recent_form_score: float
     data_source: Optional[str]
+
+
+class TeamSquadOut(BaseModel):
+    team: TeamOut
+    coach: Optional[str] = None
+    squad_count: int
+    squad: list[PlayerOut]
 
 
 class EloPoint(BaseModel):
@@ -99,6 +114,15 @@ class MatchProbabilities(BaseModel):
     away_win: float
 
 
+class RagExplanation(BaseModel):
+    """Optional RAG-generated explanation attached to prediction outputs."""
+    answer: str
+    citations: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+
+
 class MatchPrediction(BaseModel):
     home: str
     away: str
@@ -107,6 +131,7 @@ class MatchPrediction(BaseModel):
     away_xg: float
     explanation: str
     factors: list[dict]
+    rag_explanation: Optional[RagExplanation] = None
 
 
 # ---- tournament & monte carlo ----------------------------------------------
@@ -129,6 +154,7 @@ class TeamProbabilityOut(BaseModel):
     expected_finish: float
     champion_ci_low: float
     champion_ci_high: float
+    rag_explanation: Optional[RagExplanation] = None
 
 
 # ---- scenario comparison ---------------------------------------------------

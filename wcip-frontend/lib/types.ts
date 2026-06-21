@@ -19,9 +19,16 @@ export interface Team {
   id: number;
   name: string;
   code: string;
+  fifa_code?: string | null;
   confederation: string;
   elo: number;
+  elo_rating?: number | null;
   fifa_rank: number;
+  fifa_ranking?: number | null;
+  group?: string | null;
+  group_label?: string | null;
+  coach?: string | null;
+  squad_count?: number;
 }
 
 export interface EloRatingEntry {
@@ -412,6 +419,7 @@ export interface TeamDetail {
 
 export interface Player {
   id: number;
+  team_id?: number | null;
   name: string;
   team_name?: string;
   position: string;
@@ -448,6 +456,56 @@ export interface Player {
 }
 
 export interface TeamSquad {
-  team_name: string;
+  team?: Team;
+  team_name?: string;
+  coach?: string | null;
+  squad_count?: number;
   squad: Player[];
+}
+
+// RAG types
+export interface RagChunkRef {
+  chunk_id: number;
+  document_id: number;
+  doc_type: string;
+  title: string;
+  text: string;
+  score: number;
+}
+
+export interface RagAnswer {
+  answer: string;
+  chunks: RagChunkRef[];
+  citations: string[];
+  sources: string[];
+  confidence: number;
+  warnings: string[];
+  context_type?: string | null;
+  team_id?: number | null;
+  simulation_id?: string | null;
+}
+
+export interface RagAskRequest {
+  query: string;
+  context_type?: string | null;
+  team_id?: number | null;
+  simulation_id?: string | null;
+  max_chunks?: number;
+}
+
+export interface RagIndexStatus {
+  total_documents: number;
+  total_chunks: number;
+  doc_types: Record<string, number>;
+  last_indexed_at: string | null;
+  index_method: string;
+}
+
+export interface RagDocumentSummary {
+  id: number;
+  doc_type: string;
+  title: string;
+  source_ref: string;
+  indexed_at: string;
+  chunk_count: number;
 }

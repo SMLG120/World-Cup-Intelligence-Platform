@@ -134,6 +134,18 @@ def retrain_if_needed():
         return {"status": "failed", "detail": str(exc)}
 
 
+@celery_app.task(name="etl.refresh_all_live_football_data", bind=True, max_retries=2)
+def refresh_all_live_football_data(self):
+    """Coordinated refresh: results → Elo → FIFA → players → cache → retrain check."""
+    try:
+        from app.services.data_refresh_service import refresh_all_live_football_data as _refresh
+
+        return _refresh()
+    except Exception as exc:
+        logger.error("refresh_all_live_football_data failed: %s", exc)
+        raise self.retry(exc=exc, countdown=60 * 15)
+
+
 @celery_app.task(name="etl.full_pipeline", bind=True, max_retries=2)
 def full_pipeline(self, force_refresh: bool = False):
     """Run the complete ETL pipeline (triggered manually or on deploy)."""

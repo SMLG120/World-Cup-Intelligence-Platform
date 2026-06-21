@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from app.core.deps import AdminUser
 from app.services.data_refresh_service import (
     refresh_all_data,
+    refresh_all_live_football_data,
     refresh_elo_ratings,
     refresh_fifa_rankings,
     refresh_player_availability,
@@ -34,6 +35,12 @@ def admin_refresh_players(_user: AdminUser) -> dict[str, Any]:
 @router.post("/refresh-all")
 def admin_refresh_all(_user: AdminUser) -> dict[str, Any]:
     return refresh_all_data()
+
+
+@router.post("/refresh-all-live")
+def admin_refresh_all_live(_user: AdminUser) -> dict[str, Any]:
+    """Coordinated live data refresh: results → Elo → FIFA → players → cache → retrain check."""
+    return refresh_all_live_football_data()
 
 
 @router.post("/ingest-squad-pdf")

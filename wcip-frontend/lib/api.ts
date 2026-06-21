@@ -6,9 +6,9 @@ import type {
   MatchPrediction, Page, ScenarioComparison, Simulation, Team, TokenPair,
   TournamentResult, User, EloPoint, AdminAnalytics,
   HybridPrediction, MLModel, FeatureVector, QualifiedTeam,
-  WC2026Groups, WC2026Simulation, TeamDetail, Player,
+  WC2026Groups, WC2026Simulation, TeamDetail, Player, TeamSquad,
   WorldCupWinnerPrediction, DataFreshness, LatestEloSnapshot,
-  PredictionMode,
+  PredictionMode, RagAnswer, RagAskRequest, RagIndexStatus, RagDocumentSummary,
 } from "./types";
 
 function resolveApiBase() {
@@ -145,9 +145,16 @@ export const api = {
   logout: () => tokenStore.clear(),
 
   // --- teams ---
-  teams: (confederation?: string) =>
-    request<Team[]>(`/teams${confederation ? `?confederation=${confederation}` : ""}`),
+  teams: (confederation?: string, worldCupOnly = true) => {
+    const params = new URLSearchParams();
+    if (confederation) params.set("confederation", confederation);
+    params.set("world_cup_only", String(worldCupOnly));
+    return request<Team[]>(`/teams?${params}`);
+  },
   team: (id: number) => request<Team>(`/teams/${id}`),
+  teamPlayers: (id: number, position?: string) =>
+    request<Player[]>(`/teams/${id}/players${position ? `?position=${encodeURIComponent(position)}` : ""}`),
+  teamSquad: (id: number) => request<TeamSquad>(`/teams/${id}/squad`),
   eloHistory: (id: number) => request<EloPoint[]>(`/teams/${id}/elo-history`),
   latestElo: (limit = 50) => request<LatestEloSnapshot>(`/ratings/elo/latest?limit=${limit}`),
   teamEloSnapshotHistory: (id: number, limit = 100) =>
@@ -304,5 +311,23 @@ export const api = {
   wc2026Players: (teamName: string) =>
     request<{ team_name: string; squad: Player[] }>(
       `/world-cup/players/${encodeURIComponent(teamName)}`
+    ),
+};
+
+export const ragApi = {
+  ask: (req: RagAskRequest) =>
+    request<RagAnswer>("/rag/ask", { method: "POST", body: req }),
+
+  status: () => request<RagIndexStatus>("/rag/status"),
+
+  documents: (doc_type?: string) => {
+    const params = doc_type ? `?doc_type=${encodeURIComponent(doc_type)}` : "";
+    return request<RagDocumentSummary[]>(`/rag/documents${params}`);
+  },
+
+  adminIndex: (force = false) =>
+    request<{ status: string; indexed: Record<string, number>; force: boolean }>(
+      `/admin/rag/index?force=${force}`,
+      { method: "POST", auth: true }
     ),
 };

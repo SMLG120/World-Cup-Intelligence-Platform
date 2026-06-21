@@ -408,21 +408,29 @@ The frontend is a Next.js app in `wcip-frontend`.
 
 ### Main Screens
 
+- Final navigation: `WC 2026 | BRACKET | PREDICT | SCENARIOS | EXPLAIN | MODELS | TEAMS | SAVED`.
 - `/dashboard` gives the user an overview of teams and predictions.
-- `/world-cup` is the main World Cup 2026 intelligence center.
-- `/wc2026/simulate` opens the full World Cup 2026 tournament simulator.
-- `/wc2026/bracket` opens the dedicated bracket simulation view with group
-  tables first, then Round of 32 through champion.
-- `/predict` remains the lightweight single-match predictor.
-- `/simulate`, `/tournament`, and `/wc2026` route users back to the main World
-  Cup experience to avoid duplicate simulation screens.
-- `/teams` lists teams and links to team detail pages.
-- `/team/[id]` shows one team.
+- `/wc2026` is the World Cup 2026 intelligence center. It shows a compact
+  overview: top champion probabilities, most likely final, dark horses,
+  freshness dates, group snapshot, and a CTA into the bracket simulator.
+- `/world-cup` redirects to `/wc2026` for compatibility.
+- `/wc2026/bracket` is the only full tournament simulation screen. It shows
+  group tables, group fixtures, best third-place ranking, Round of 32 through
+  champion, and save controls.
+- `/predict` is the single-match prediction page. It compares statistical, ML,
+  and ensemble outputs in one place, so `/compare` redirects here.
+- `/scenarios` is the what-if lab. It supports tournament scenario comparison
+  and player availability changes moved from the old Lab page, so `/player-lab`
+  redirects here.
+- `/teams` lists WC2026 nations with FIFA code, group, confederation, Elo, FIFA
+  ranking, coach, squad count, and team-detail links.
+- `/team/[id]` shows one team, its coach, strength summary, and full database
+  squad with position, club, height, caps, and goals.
 - `/player/[id]` shows one player.
-- `/compare` compares teams or prediction outputs.
-- `/scenarios` compares two or three what-if simulations.
+- `/explain` explains feature impacts and SHAP/factor output.
 - `/models` shows model metrics and feature information.
-- `/saved` and `/history` show user simulation history.
+- `/saved` shows saved simulations for the logged-in user. `/history` remains a
+  legacy history route.
 - `/login`, `/register`, and `/profile` handle user accounts.
 
 ### Interface Step By Step
@@ -449,10 +457,12 @@ All backend API routes use the `/api/v1` prefix.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/teams` | List teams |
-| `GET` | `/teams/{id}` | Team detail |
+| `GET` | `/teams` | List WC2026 teams by default with group, code, coach, ranking, Elo, and squad count; pass `world_cup_only=false` for every historical team |
+| `GET` | `/teams/{id}` | Team detail with the same enriched contract |
 | `GET` | `/teams/{id}/stats` | Team model inputs |
 | `GET` | `/teams/{id}/elo-history` | Elo history |
+| `GET` | `/teams/{id}/players` | Full database squad rows for a team |
+| `GET` | `/teams/{id}/squad` | Team, coach, squad count, and full squad payload |
 | `GET` | `/players` | Player registry with team/search filters |
 | `GET` | `/players/{id}` | Player detail |
 | `POST` | `/match/simulate` | Single-match statistical prediction |
@@ -650,7 +660,7 @@ cd wcip-backend
 python -c "from etl.world_cup_2026.ingest import run_wc2026_seed; print(run_wc2026_seed(source_path='data/wc2026_snapshot.json'))"
 ```
 
-### Build FIFA Squad CSV For Player Lab And ML
+### Build FIFA Squad CSV For Teams, Scenarios, And ML
 
 The official FIFA squad-list PDF can be converted into an importer-ready CSV.
 The PDF fields are factual roster fields, not official player ratings. The
@@ -697,8 +707,13 @@ wcip-backend/data/external/fifa_wc2026_squad_players.csv
 After import:
 
 1. `/api/v1/world-cup/players/{team_name}` returns the real squad rows.
-2. `/player-lab` shows player rating, caps, goals, club, age, and availability.
-3. `ml/features.py` uses the imported player ratings for squad depth,
+2. `/api/v1/teams/{team_id}/players` and `/api/v1/teams/{team_id}/squad`
+   return team-id based squad payloads for the Teams page and team detail page.
+3. `/teams` shows squad counts and `/team/[id]` shows the full roster with
+   position, club, height, caps, goals, and coach context.
+4. `/scenarios` loads the same squad rows for player availability what-ifs.
+5. `/predict` uses the same team registry for single-match prediction setup.
+6. `ml/features.py` uses the imported player ratings for squad depth,
    positional-unit strength, top-five player strength, availability, caps,
    goals, and weighted player-strength features.
 
@@ -760,15 +775,23 @@ cd wcip-frontend
 npm run dev
 ```
 
-3. Open `http://localhost:3000/wc2026/bracket`.
-4. Pick a simulation count.
-5. Pick `Ensemble`, `Statistical`, or `ML` mode.
-6. Click `Run`.
-7. Confirm group tables render before the bracket.
-8. Confirm the bracket shows Round of 32, Round of 16, Quarter-finals,
+3. Open `http://localhost:3000/wc2026`.
+4. Confirm the top nav only shows `WC 2026`, `BRACKET`, `PREDICT`,
+   `SCENARIOS`, `EXPLAIN`, `MODELS`, `TEAMS`, and `SAVED`.
+5. Open `http://localhost:3000/wc2026/bracket`.
+6. Pick a simulation count.
+7. Pick `Ensemble`, `Statistical`, or `ML` mode.
+8. Click `Run`.
+9. Confirm group tables render before the bracket.
+10. Confirm the bracket shows Round of 32, Round of 16, Quarter-finals,
    Semi-finals, Third-place Match, Final, and Champion.
-9. Click `Random run` or `Rerun` to generate a different unseeded path.
-10. Sign in and click `Save Simulation` to persist the full bracket to your
+11. Click `Random run` or `Rerun` to generate a different unseeded path.
+12. Open `http://localhost:3000/teams` and confirm teams, groups, coaches,
+    rankings, Elo values, squad counts, and team-detail links render.
+13. Open any `/team/[id]` page and confirm the full squad table renders.
+14. Open `http://localhost:3000/scenarios`, load squads, toggle player
+    availability, and run the match delta.
+15. Sign in and click `Save Simulation` to persist the full bracket to your
     account.
 
 ## Repository Layout

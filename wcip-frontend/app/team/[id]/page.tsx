@@ -8,11 +8,13 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   CartesianGrid,
 } from "recharts";
-import { useTeam, useEloHistory, useWC2026TeamDetail, useWC2026Players } from "@/lib/queries";
+import { useTeam, useEloHistory, useTeamSquad, useWC2026TeamDetail } from "@/lib/queries";
+import type { Player } from "@/lib/types";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { DataFreshnessStrip } from "@/components/data-freshness";
+import { AskAnalystBox } from "@/components/AskAnalystBox";
 
 // ── Stat box ──────────────────────────────────────────────────────────────────
 
@@ -120,24 +122,23 @@ function SquadBrief({
   players,
   teamName,
 }: {
-  players: {
-    id: number;
-    name: string;
-    position: string;
-    goals: number;
-    xg: number;
-    fitness_score: number;
-    injured: boolean;
-    suspended: boolean;
-    data_source?: string | null;
-  }[];
+  players: Player[];
   teamName: string;
 }) {
   if (!players.length) {
-    return <p className="text-muted text-sm text-center py-6">No squad data — set FOOTBALL_DATA_API_KEY to populate.</p>;
+    return (
+      <p className="text-muted text-sm text-center py-6">
+        No squad data is loaded for this team yet. Run the squad ingestion ETL to populate players.
+      </p>
+    );
   }
 
-  const sorted = [...players].sort((a, b) => b.xg - a.xg).slice(0, 10);
+  const positionOrder: Record<string, number> = { GK: 0, DEF: 1, DF: 1, MID: 2, MF: 2, FWD: 3, FW: 3 };
+  const sorted = [...players].sort((a, b) => {
+    const byPosition = (positionOrder[a.position] ?? 9) - (positionOrder[b.position] ?? 9);
+    if (byPosition !== 0) return byPosition;
+    return (a.shirt_number ?? 99) - (b.shirt_number ?? 99) || a.name.localeCompare(b.name);
+  });
 
   return (
     <table className="w-full text-sm">
@@ -145,8 +146,10 @@ function SquadBrief({
         <tr className="kicker border-b border-line">
           <th className="py-2 text-left font-normal">Player</th>
           <th className="py-2 text-left font-normal hidden sm:table-cell">Pos</th>
+          <th className="py-2 text-left font-normal hidden md:table-cell">Club</th>
+          <th className="py-2 text-right font-normal hidden sm:table-cell">Ht</th>
+          <th className="py-2 text-right font-normal">Caps</th>
           <th className="py-2 text-right font-normal">G</th>
-          <th className="py-2 text-right font-normal">xG</th>
           <th className="py-2 text-right font-normal">Status</th>
           <th className="py-2 text-right font-normal hidden md:table-cell">Profile</th>
         </tr>
@@ -161,8 +164,12 @@ function SquadBrief({
                 {isPlaceholder && <span className="ml-2 text-[10px] uppercase tracking-wide text-muted">placeholder</span>}
               </td>
               <td className="py-1.5 text-muted text-xs hidden sm:table-cell">{p.position}</td>
-              <td className="py-1.5 text-right tnum text-muted">{p.goals}</td>
-              <td className="py-1.5 text-right tnum text-muted">{p.xg.toFixed(1)}</td>
+              <td className="py-1.5 text-muted text-xs hidden md:table-cell">{p.club ?? "-"}</td>
+              <td className="py-1.5 text-right tnum text-muted hidden sm:table-cell">
+                {p.height_cm ? `${p.height_cm}` : "-"}
+              </td>
+              <td className="py-1.5 text-right tnum text-muted">{p.international_caps ?? 0}</td>
+              <td className="py-1.5 text-right tnum text-muted">{p.international_goals ?? p.goals ?? 0}</td>
               <td className="py-1.5 text-right">
                 {isPlaceholder ? (
                   <span className="text-xs text-muted">Pending</span>
@@ -203,7 +210,7 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
   const { data: team, isLoading, isError } = useTeam(teamId);
   const { data: history } = useEloHistory(teamId);
   const { data: wc2026Detail } = useWC2026TeamDetail(team?.name ?? "", !!team?.name);
-  const { data: squadData } = useWC2026Players(team?.name ?? "", !!team?.name);
+  const { data: squadData, isError: squadError } = useTeamSquad(teamId, !!team);
 
   if (isError) {
     return (
@@ -262,8 +269,8 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
 
       {/* Core stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Elo rating" value={Math.round(team.elo)} accent />
-        <Stat label="FIFA rank" value={`#${team.fifa_rank}`} />
+          <Stat label="Elo rating" value={Math.round(team.elo)} accent />
+          <Stat label="FIFA rank" value={`#${team.fifa_rank}`} />
         {wc2026Detail ? (
           <>
             <Stat label="Form (ppg)" value={wc2026Detail.form_ppg.toFixed(2)} sub="points per game" />
@@ -285,7 +292,7 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
           <Stat label="Chemistry" value={`${(wc2026Detail.chemistry * 100).toFixed(0)}%`} />
           <Stat
             label="Coach"
-            value={wc2026Detail.coach.name ?? "Unknown"}
+            value={squadData?.coach ?? wc2026Detail.coach.name ?? "Unknown"}
             sub={coachSub}
           />
         </div>
@@ -322,6 +329,16 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
         )}
       </div>
 
+      {/* RAG analyst box */}
+      <section>
+        <h2 className="kicker mb-3">Ask About This Team</h2>
+        <AskAnalystBox
+          contextType="team"
+          teamId={team.id}
+          placeholder={`Ask about ${team.name}'s squad, stats, or coach...`}
+        />
+      </section>
+
       {/* Squad table */}
       <Card>
         <CardHeader className="flex items-baseline justify-between">
@@ -331,7 +348,13 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
           )}
         </CardHeader>
         <CardBody>
-          <SquadBrief players={squadData?.squad ?? []} teamName={team.name} />
+          {squadError ? (
+            <p className="text-signal text-sm text-center py-6">
+              Squad data could not be loaded for this team.
+            </p>
+          ) : (
+            <SquadBrief players={squadData?.squad ?? []} teamName={team.name} />
+          )}
         </CardBody>
       </Card>
     </div>

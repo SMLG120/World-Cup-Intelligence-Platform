@@ -8,16 +8,14 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 
 const LINKS = [
-  { href: "/world-cup", label: "WC 2026", group: "main" },
-  { href: "/wc2026/bracket", label: "Bracket", group: "main" },
-  { href: "/predict", label: "Predict", group: "main" },
-  { href: "/scenarios", label: "Scenarios", group: "main" },
-  { href: "/compare", label: "Compare", group: "main" },
-  { href: "/explain", label: "Explain", group: "analysis" },
-  { href: "/models", label: "Models", group: "analysis" },
-  { href: "/player-lab", label: "Lab", group: "analysis" },
-  { href: "/teams", label: "Teams", group: "data" },
-  { href: "/saved", label: "Saved", group: "data" },
+  { href: "/wc2026", label: "WC 2026", group: "main" },
+  { href: "/wc2026/bracket", label: "BRACKET", group: "main" },
+  { href: "/predict", label: "PREDICT", group: "main" },
+  { href: "/scenarios", label: "SCENARIOS", group: "main" },
+  { href: "/explain", label: "EXPLAIN", group: "analysis" },
+  { href: "/models", label: "MODELS", group: "analysis" },
+  { href: "/teams", label: "TEAMS", group: "data" },
+  { href: "/saved", label: "SAVED", group: "data" },
 ];
 
 export function Nav() {
@@ -37,7 +35,9 @@ export function Nav() {
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-0.5 flex-1 overflow-x-auto">
           {LINKS.map((l) => {
-            const active = pathname === l.href || pathname.startsWith(l.href + "/");
+            const active = l.href === "/wc2026"
+              ? pathname === "/wc2026" || pathname === "/world-cup"
+              : pathname === l.href || pathname.startsWith(l.href + "/");
             return (
               <Link
                 key={l.href}
@@ -112,7 +112,9 @@ export function Nav() {
           >
             <div className="px-5 py-4 space-y-1">
               {LINKS.map((l) => {
-                const active = pathname === l.href;
+                const active = l.href === "/wc2026"
+                  ? pathname === "/wc2026" || pathname === "/world-cup"
+                  : pathname === l.href || pathname.startsWith(l.href + "/");
                 return (
                   <Link
                     key={l.href}

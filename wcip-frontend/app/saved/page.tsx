@@ -163,7 +163,7 @@ function SavedInner() {
           >
             {compare.isPending ? "Comparing…" : "Compare Simulations"}
           </Button>
-          <Link href="/tournament"><Button>New simulation</Button></Link>
+          <Link href="/wc2026/bracket"><Button>New simulation</Button></Link>
         </div>
       </header>
 
@@ -206,7 +206,7 @@ function SavedInner() {
       ) : !data || data.items.length === 0 ? (
         <Card><CardBody className="py-16 text-center text-muted text-sm">
           No saved simulations yet.{" "}
-          <Link href="/tournament" className="text-pitch hover:underline">Run one</Link> to get started.
+          <Link href="/wc2026/bracket" className="text-pitch hover:underline">Run one</Link> to get started.
         </CardBody></Card>
       ) : (
         <div className="space-y-3">

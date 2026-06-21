@@ -16,6 +16,27 @@ def test_team_detail_and_404(client):
     assert client.get("/api/v1/teams/999999").status_code == 404
 
 
+def test_team_contract_includes_wc2026_metadata_and_squad(client):
+    teams = client.get("/api/v1/teams").json()
+    mexico = next(team for team in teams if team["name"] == "Mexico")
+    assert mexico["fifa_code"] == "MEX"
+    assert mexico["group"] == "A"
+    assert "coach" in mexico
+    assert "squad_count" in mexico
+
+    players = client.get(f"/api/v1/teams/{mexico['id']}/players")
+    assert players.status_code == 200
+    for player in players.json():
+        assert player["team_id"] == mexico["id"]
+        assert player["team_name"] == "Mexico"
+
+    squad = client.get(f"/api/v1/teams/{mexico['id']}/squad")
+    assert squad.status_code == 200
+    body = squad.json()
+    assert body["team"]["name"] == "Mexico"
+    assert body["squad_count"] == len(body["squad"])
+
+
 def test_match_simulate_probabilities(client):
     r = client.post("/api/v1/match/simulate",
                     json={"home": "Brazil", "away": "Ghana"})

@@ -237,7 +237,7 @@ def write_players_csv(
 
 
 def _iter_clean_lines(text: str) -> Iterable[str]:
-    for line in text.replace("\xa0", " ").splitlines():
+    for line in text.replace("\xa0", " ").replace("\x00", "").splitlines():
         cleaned = re.sub(r"\s+", " ", line).strip()
         if not cleaned:
             continue
@@ -264,7 +264,7 @@ def _parse_team_header(line: str) -> tuple[str, str] | None:
 
 
 def _looks_like_player_row(line: str) -> bool:
-    return bool(re.match(r"^(GK|DF|MF|FW)\s+", line))
+    return bool(re.match(r"^(GK|DF|MF|FW)(?:\s+|[A-Z])", line))
 
 
 def _parse_player_line(
@@ -275,32 +275,37 @@ def _parse_player_line(
     source_url: str,
     source_version: str,
 ) -> FifaSquadPlayer:
-    match = re.match(
-        r"^(?P<pos>GK|DF|MF|FW)\s+"
-        r"(?P<head>.+?)\s+"
-        r"(?P<dob>\d{2}/\d{2}/\d{4})\s+"
-        r"(?P<club>.+?)\s+"
-        r"(?P<height>\d{3})\s+"
-        r"(?P<caps>\d+)\s+"
-        r"(?P<goals>\d+)$",
-        line,
-    )
-    if not match:
+    pos_match = re.match(r"^(?P<pos>GK|DF|MF|FW)\s*(?P<body>.+)$", line)
+    if not pos_match:
         raise ValueError("row does not match FIFA squad format")
 
-    position = POSITION_MAP[match.group("pos")]
-    caps = int(match.group("caps"))
-    goals = int(match.group("goals"))
-    height = int(match.group("height"))
-    dob = match.group("dob")
+    body = pos_match.group("body").strip()
+    dob_match = re.match(
+        r"^(?P<head>.+?)(?P<dob>\d{2}/\d{2}/\d{4})(?P<tail>.+)$",
+        body,
+    )
+    if not dob_match:
+        raise ValueError("row missing DOB")
+
+    tail_match = re.match(
+        r"^(?P<club>.+?)\s+(?P<height>\d{3})\s+(?P<caps_goals>\d+(?:\s+\d+)?)$",
+        dob_match.group("tail").strip(),
+    )
+    if not tail_match:
+        raise ValueError("row missing club/height/caps/goals tail")
+
+    position = POSITION_MAP[pos_match.group("pos")]
+    caps, goals = _parse_caps_goals(tail_match.group("caps_goals"))
+    height = int(tail_match.group("height"))
+    dob = dob_match.group("dob")
     age = _age_on(dob, TOURNAMENT_START)
-    source_name, player_name = _extract_player_names(match.group("head"))
+    source_name, player_name = _extract_player_names(dob_match.group("head"))
 
     return FifaSquadPlayer(
         player_name=player_name,
         team_name=team_name,
         position=position,
-        club=match.group("club").strip(),
+        club=tail_match.group("club").strip(),
         age=age,
         international_caps=caps,
         international_goals=goals,
@@ -315,6 +320,32 @@ def _parse_player_line(
     )
 
 
+def _parse_caps_goals(raw: str) -> tuple[int, int]:
+    parts = raw.split()
+    if len(parts) == 2:
+        return int(parts[0]), int(parts[1])
+    if len(parts) != 1 or not parts[0].isdigit():
+        raise ValueError("invalid caps/goals tail")
+
+    token = parts[0]
+    candidates: list[tuple[int, int]] = []
+    for split_at in range(1, len(token)):
+        caps = int(token[:split_at])
+        goals = int(token[split_at:])
+        if 0 <= caps <= 250 and 0 <= goals <= 200:
+            candidates.append((caps, goals))
+    if not candidates:
+        raise ValueError("could not split compact caps/goals")
+
+    plausible = [
+        (caps, goals)
+        for caps, goals in candidates
+        if goals <= max(caps, 5)
+    ]
+    candidates = plausible or candidates
+    return max(candidates, key=lambda item: (item[0], -item[1]))
+
+
 def _extract_player_names(head: str) -> tuple[str, str]:
     tokens = head.split()
     if len(tokens) < 2:
@@ -327,7 +358,7 @@ def _extract_player_names(head: str) -> tuple[str, str]:
         source = head
         return source, _smart_title(source)
 
-    given_tokens = _detect_given_name_tokens(tokens)
+    given_tokens = [_clean_given_token(token) for token in _detect_given_name_tokens(tokens)]
     source = f"{' '.join(surname_tokens)} {' '.join(given_tokens)}"
     display = f"{' '.join(_smart_title(t) for t in given_tokens)} {' '.join(_smart_title(t) for t in surname_tokens)}"
     return source, display.strip()
@@ -340,6 +371,17 @@ def _detect_given_name_tokens(tokens: list[str]) -> list[str]:
         if len(tokens) >= size * 2 and norm_tokens[:size] == norm_tokens[size:size * 2]:
             return tokens[:size]
     return tokens[:1]
+
+
+def _clean_given_token(token: str) -> str:
+    if len(token) < 4 or len(token) % 2 != 0:
+        return token
+    midpoint = len(token) // 2
+    first = token[:midpoint]
+    second = token[midpoint:]
+    if _normalise_name_token(first) == _normalise_name_token(second):
+        return first
+    return token
 
 
 def _is_upper_name_token(token: str) -> bool:

@@ -10,9 +10,8 @@
  * which mirrors the backend's build_2026_bracket() sequential pairing.
  */
 
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { Trophy, ChevronRight } from "lucide-react";
+import { Trophy } from "lucide-react";
 import type { WC2026KnockoutRound, WC2026Match } from "@/lib/types";
 import { pct } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -322,7 +321,6 @@ export function TournamentBracket({
   const thirdPlaceMatches = roundMap.get("Third-place match") ?? [];
   const thirdPlaceMatch = thirdPlaceMatches[0] ?? null;
 
-  const finalMatches = roundMap.get("Final") ?? [];
   const finalTop = POSITIONS["Final"]?.[0] ?? 0;
   const championTop = finalTop + CARD_H / 2;
 

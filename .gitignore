@@ -81,6 +81,7 @@ wandb/
 artifacts/
 models/generated/
 catboost_info/
+wcip-backend/models/
 
 # Docker / local runtime
 docker-data/
@@ -96,3 +97,11 @@ wcip-backend/data/external/*
 
 # Archives / local exports
 *.zip
+
+# Audit / generated docs (untracked, not for repo)
+DATA_SECURITY_AUDIT.md
+FRONTEND_NAVIGATION_AUDIT.md
+world_cup_2026_audit.md
+BRACKET_SIMULATION_AUDIT.md
+RAG_AND_CLEANUP_AUDIT.md
+CLEANUP_REPORT.md

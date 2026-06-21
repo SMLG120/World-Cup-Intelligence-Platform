@@ -47,6 +47,11 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `ranking_source_logs` — ranking fetch/load audit trail
 - ✅ `player_rating_imports` — legal-source rating import batches
 - ✅ `player_rating_records` — historical player-rating rows per import
+- ✅ `rag_documents` — indexed text documents for RAG retrieval (teams, players, coaches, model metadata)
+- ✅ `rag_chunks` — overlapping 200-token text chunks from each document
+- ✅ `rag_embeddings` — TF-IDF term weights per chunk (keyword retrieval)
+- ✅ `rag_queries` — query audit log with latency tracking
+- ✅ `rag_answers` — generated answer log with confidence and citations
 
 ### Data Quality
 - ✅ Unique constraint on (home_team, away_team, match_date) — duplicates rejected at DB level
@@ -59,7 +64,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ Ranking source logging for fetch/load traceability
 - ✅ Elo source logging for fetch/load traceability
 - ✅ Legal CSV player-rating import with validation and versioning
-- ✅ Official FIFA squad-list CSV generation for Player Lab and player-strength ML features
+- ✅ Official FIFA squad-list CSV generation for Teams, Scenarios, and player-strength ML features
 - ✅ Generated player profiles from supported fields only; incomplete rows labelled
 - ✅ Player-derived feature validator for sparse squads, duplicates, rating ranges, position mapping, and NaN/inf safety
 - 📋 Historical FIFA ranking backfill before first snapshot ingestion date
@@ -169,10 +174,12 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `GET /auth/me` — current user
 
 ### Teams
-- ✅ `GET /teams` — list with confederation filter (cached)
-- ✅ `GET /teams/{id}` — team detail
+- ✅ `GET /teams` — enriched WC2026 list by default with confederation filter, FIFA code, WC group, coach, squad count, Elo, and FIFA rank; `world_cup_only=false` returns every historical team
+- ✅ `GET /teams/{id}` — enriched team detail
 - ✅ `GET /teams/{id}/stats` — aggregated statistics
 - ✅ `GET /teams/{id}/elo-history` — Elo timeseries
+- ✅ `GET /teams/{id}/players` — full squad rows for a team
+- ✅ `GET /teams/{id}/squad` — team, coach, squad count, and squad payload
 - ✅ `GET /ratings/elo/latest` — current versioned Elo snapshot
 - ✅ `GET /ratings/elo/history/{team_id}` — versioned Elo records for a team
 - ✅ `GET /players` — registry with team/search filters
@@ -251,7 +258,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ button, card, input, select, slider, skeleton, badge
 
 ### Shared Components
-- ✅ `components/nav.tsx` — 10-route top navigation
+- ✅ `components/nav.tsx` — clean eight-tab navigation: WC 2026, BRACKET, PREDICT, SCENARIOS, EXPLAIN, MODELS, TEAMS, SAVED
 - ✅ `components/probability-bar.tsx` — W/D/L split bar
 - ✅ `components/match-predictor.tsx` — team pickers + modifiers
 - ✅ `components/champion-chart.tsx` — champion probability chart (Recharts)
@@ -260,23 +267,23 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 
 ### Pages
 - ✅ `/dashboard` — overview, top contenders, recent simulations
-- ✅ `/world-cup` — canonical WC2026 dashboard with probabilities, teams, group tables, and bracket tab
-- ✅ `/wc2026/simulate` — explicit full WC2026 simulator route using the canonical dashboard
+- ✅ `/wc2026` — canonical WC2026 overview with top probabilities, most likely final, dark horses, freshness, group snapshot, and bracket CTA
+- ✅ `/world-cup` — compatibility redirect to `/wc2026`
+- ✅ `/wc2026/simulate` — explicit simulator compatibility route redirected to `/wc2026/bracket`
 - ✅ `/wc2026/bracket` — dedicated bracket simulator with group tables,
   group fixtures, full knockout columns, mode controls, random rerun, save, and
   retry/error states
-- ✅ `/wc2026` — legacy route redirected to `/world-cup`
+- ✅ `/compare` — compatibility redirect to `/predict`; comparison charts live inside Predict
+- ✅ `/player-lab` — compatibility redirect to `/scenarios`; player availability controls live inside Scenarios
 - ✅ `components/winner-predictions-section.tsx` — winner prediction table and charts
-- ✅ Winner prediction sections on `/dashboard`, `/wc2026`, `/world-cup`, `/tournament`, `/predict`
+- ✅ Winner prediction sections on `/dashboard`, `/wc2026`, `/predict`
 - ✅ Freshness indicators on `/`, `/dashboard`, `/wc2026`, `/predict`, `/simulate`, `/tournament`, `/teams`, `/team/[id]`, `/player/[id]`, `/models`
-- ✅ `/compare` — statistical vs all 5 ML models vs ensemble, side-by-side
-- ✅ `/player-lab` — load squads, show ratings/caps/goals, toggle injuries/suspensions, override form/coach
 - ✅ `/models` — model metrics, ensemble weights, feature vector explorer
-- ✅ `/simulate` — legacy simulation route redirected to `/world-cup`
-- ✅ `/tournament` — legacy tournament route redirected to `/world-cup`
-- ✅ `/scenarios` — 2–3 scenario comparison
-- ✅ `/teams` — sortable team table
-- ✅ `/team/[id]` — team detail + Elo trend
+- ✅ `/simulate` — legacy simulation route redirected to `/wc2026/bracket`
+- ✅ `/tournament` — legacy tournament route redirected to `/wc2026/bracket`
+- ✅ `/scenarios` — WC2026 scenario comparison plus squad loading, player availability toggles, and before/after match delta
+- ✅ `/teams` — sortable WC2026 table with group, code, confederation, Elo, FIFA rank, coach, squad count, and team links
+- ✅ `/team/[id]` — team detail + Elo trend + full squad table
 - ✅ `/saved` — user simulation history (rename, share, duplicate, delete)
 - ✅ `/history` — activity timeline
 - ✅ `/profile` — account settings
@@ -299,6 +306,27 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - 📋 GitHub Actions CI (backend pytest + frontend typecheck on push)
 - 📋 Frontend Jest / RTL unit tests
 - 📋 Playwright E2E tests
+
+---
+
+## RAG System
+
+- ✅ `wcip-backend/rag/` — RAG module (explanation/retrieval only, never predicts winners)
+  - `sources.py` — fetches team, player, coach, group, model metadata; never reads secrets
+  - `chunking.py` — 200-token overlapping text chunker
+  - `indexer.py` — TF-IDF indexer, persists to `rag_documents/chunks/embeddings`
+  - `retriever.py` — keyword + TF-IDF retrieval with doc-type and team-id filtering
+  - `generator.py` — template-based answer assembly with disclaimer
+  - `service.py` — `answer_question()` orchestrator with query/answer audit logging
+  - `schemas.py` — `RagAnswer`, `RagAskRequest`, `RagIndexStatus`, `RagDocumentSummary`
+- ✅ `app/api/v1/rag.py` — `POST /rag/ask`, `GET /rag/status`, `GET /rag/documents`, `POST /admin/rag/index`
+- ✅ `app/models/rag.py` — ORM models for the 5 RAG tables
+- ✅ `alembic/versions/c1d2e3f4a5b6_add_rag_tables.py` — migration applied
+- ✅ `RagExplanation` field on `MatchPrediction` and `TeamProbabilityOut` schemas
+- ✅ Frontend components: `AskAnalystBox`, `RagAnswerCard`, `RagSourcesList`, `PredictionExplanationPanel`
+- ✅ RAG integrated into `/wc2026`, `/teams`, and `/team/[id]` pages
+- ✅ RAG API client in `lib/api.ts` (`ragApi.ask`, `ragApi.status`, `ragApi.documents`, `ragApi.adminIndex`)
+- ✅ RAG types in `lib/types.ts`
 
 ---
 
