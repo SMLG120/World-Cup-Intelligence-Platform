@@ -4,7 +4,7 @@
 
 ## Overview
 
-The ETL pipeline transforms raw international football data from four source
+The ETL pipeline transforms raw international football data from five source
 families into clean, deduplicated, validated tables that power the statistical
 prediction engine, feature engineering, and ML training pipeline.
 
@@ -14,6 +14,7 @@ Data Sources
      ├─ martj42 CSV      (49K+ matches since 1872)
      ├─ eloratings.net   (versioned team Elo ratings)
      ├─ FIFA rankings    (versioned men’s ranking snapshots)
+     ├─ FIFA squad PDF   (WC2026 player and coach facts)
      ├─ player ratings   (legal-source CSV, optional)
      └─ football-data.org API  (squad data, optional)
      │
@@ -61,6 +62,21 @@ Tournament Simulator  (Monte Carlo, parallel)
       ▼
 API Response / Frontend
 ```
+
+Source boundaries:
+
+- Elo ratings come from World Football Elo sources (`eloratings.net` primary,
+  TSV fallback, embedded Elo fallback). If the versioned snapshot table is
+  empty, API display may fall back to cached `teams.elo` values and labels that
+  fallback as `local-team-table-cache:elo`.
+- FIFA rankings come from the official FIFA men's ranking source and are stored
+  as immutable ranking snapshots.
+- FIFA squad PDF data provides roster facts only: player names, positions,
+  clubs, caps, goals, height, DOB, and coaches. It is used for squad/player
+  features, not as an Elo or FIFA ranking source.
+- `/api/v1/data/freshness` exposes stable ISO timestamps and version fields for
+  Elo, FIFA rankings, squad data, match results, model training, feature
+  version, and prediction data snapshot.
 
 ---
 
@@ -350,7 +366,7 @@ Additional FIFA-generated columns such as `source_player_name`, `dob`,
 `source_version` are preserved in row-level import metadata.
 
 ### FIFA Squad PDF Conversion
-**File:** `etl/players/fifa_squad_pdf.py`
+**Files:** `etl/players/fifa_squad_pdf.py`, `etl/players/load_squad_pdf.py`
 
 ```bash
 cd wcip-backend
@@ -373,6 +389,25 @@ python -m etl.players.fifa_squad_pdf \
 
 The command writes `data/external/fifa_wc2026_squad_players.csv`, then imports
 it with `source_name="fifa_wc2026_squad_pdf"` when `--import-db` is provided.
+
+The direct database loader parses the PDF or pre-extracted text and upserts
+players and head coaches:
+
+```bash
+cd wcip-backend
+python -m etl.players.load_squad_pdf --download
+python -m scripts.validate_squad_ingestion
+```
+
+Expected validation target for a complete WC2026 squad source is 48 teams,
+approximately 26 players per team, 1,200+ total players, and 48 coaches. The
+current local validation run reported 1,254 players and 48 coaches, with only
+non-fatal per-team count warnings.
+
+Squad features consumed by prediction code include squad experience, total caps,
+total international goals, positional unit strength, goalkeeper/defensive/
+midfield/attacking experience proxies, availability, player form, weighted
+player strength, and squad depth.
 
 ### Extract/Load Step
 **File:** `etl/player_ratings/csv_import.py`

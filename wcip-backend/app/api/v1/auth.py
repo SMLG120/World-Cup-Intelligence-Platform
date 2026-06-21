@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import ValidationError
 
 from app.core.deps import CurrentUser, DbSession
 from app.core.security import (REFRESH, create_access_token,
@@ -11,7 +11,7 @@ from app.core.security import (REFRESH, create_access_token,
                                hash_password, verify_password)
 from app.models.user import User
 from app.repositories.repos import UserRepository
-from app.schemas.auth import (RefreshRequest, TokenPair, UserCreate, UserOut)
+from app.schemas.auth import (RefreshRequest, TokenPair, UserCreate, UserLogin, UserOut)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -30,13 +30,17 @@ def register(payload: UserCreate, db: DbSession) -> User:
 
 
 @router.post("/login", response_model=TokenPair)
-def login(db: DbSession,
-          form: OAuth2PasswordRequestForm = Depends()) -> TokenPair:
-    """OAuth2 password flow. `username` field carries the email."""
+async def login(request: Request, db: DbSession) -> TokenPair:
+    """Password login.
+
+    Accepts the OAuth2 form shape (`username` + `password`) used by Swagger and
+    older frontend code, plus JSON (`email` + `password`) for local curl/dev use.
+    """
+    email, password = await _login_credentials(request)
     repo = UserRepository(db)
-    user = repo.get_by_email(form.username)
+    user = repo.get_by_email(email)
     if (user is None or not user.hashed_password
-            or not verify_password(form.password, user.hashed_password)):
+            or not verify_password(password, user.hashed_password)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Account disabled")
@@ -44,6 +48,23 @@ def login(db: DbSession,
         access_token=create_access_token(str(user.id), user.role.value),
         refresh_token=create_refresh_token(str(user.id)),
     )
+
+
+async def _login_credentials(request: Request) -> tuple[str, str]:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type == "application/json":
+        try:
+            payload = UserLogin.model_validate(await request.json())
+        except (ValueError, ValidationError):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid login payload")
+        return payload.email.lower(), payload.password
+
+    form = await request.form()
+    email = str(form.get("username") or form.get("email") or "").strip().lower()
+    password = str(form.get("password") or "")
+    if not email or not password:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Email and password are required")
+    return email, password
 
 
 @router.post("/refresh", response_model=TokenPair)

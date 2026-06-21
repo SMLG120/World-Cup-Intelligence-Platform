@@ -1,7 +1,7 @@
 """Real-time data pipeline tests."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 
@@ -99,6 +99,44 @@ def test_data_freshness_endpoint(client):
     payload = response.json()
     assert "data_snapshot_version" in payload
     assert "source_status" in payload
+    for key in (
+        "generated_at",
+        "last_elo_update",
+        "last_fifa_ranking_update",
+        "last_player_data_update",
+        "last_match_result_update",
+        "model_trained_at",
+        "data_snapshot_timestamp",
+    ):
+        if payload.get(key):
+            datetime.fromisoformat(payload[key])
+    assert "feature_version" in payload
+    assert "model_version" in payload
+
+
+def test_latest_elo_endpoint_returns_snapshot_or_cache(client):
+    response = client.get("/api/v1/ratings/elo/latest?limit=5")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_url"]
+    assert payload["team_count"] >= len(payload["entries"])
+    assert len(payload["entries"]) <= 5
+    if payload["snapshot_id"] == "teams-display-cache":
+        assert payload["source_url"] == "local-team-table-cache:elo"
+        assert "source_note" in payload
+
+
+def test_latest_fifa_endpoint_loaded_or_safe_missing(client):
+    response = client.get("/api/v1/rankings/fifa/latest?limit=5")
+    assert response.status_code in {200, 404}
+    payload = response.json()
+    if response.status_code == 200:
+        assert payload["source_url"]
+        assert len(payload["entries"]) <= 5
+        datetime.fromisoformat(payload["ranking_date"])
+    else:
+        assert payload["status_code"] == 404
+        assert payload["message"] == "No FIFA ranking snapshot has been loaded"
 
 
 def test_admin_refresh_requires_admin(client, auth_headers, monkeypatch):

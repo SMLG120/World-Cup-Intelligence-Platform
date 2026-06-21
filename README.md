@@ -32,6 +32,38 @@ Raw football data
   -> Next.js interface
 ```
 
+The homepage explains the prediction stack in user-facing football terms:
+Elo ratings, official FIFA rankings, FIFA squad PDF data, five ML models
+(Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost), Poisson score
+modeling, Monte Carlo simulation, and the complete WC2026 bracket path from
+groups through champion.
+
+Data-source boundaries matter:
+
+- Elo comes from World Football Elo sources such as `eloratings.net`, with an
+  embedded Elo fallback only when live sources are unavailable.
+- FIFA rankings come from the official FIFA men's ranking source.
+- Squad/player facts come from the FIFA WC2026 squad PDF and feed player/squad
+  features. The PDF is not used as an Elo or FIFA ranking source.
+
+`GET /api/v1/data/freshness` exposes the frontend freshness fields: Elo updated,
+FIFA ranking updated, squad data updated, latest results updated, model trained,
+feature version, and prediction data snapshot version.
+
+Local test login:
+
+```bash
+cd wcip-backend
+python -m scripts.seed_test_user
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"testtest"}'
+```
+
+The login route also accepts the OAuth2 form shape (`username` + `password`) for
+Swagger and older clients. The seed command is development/test-only and is
+idempotent.
+
 ## How The Code Works
 
 ### 1. Startup And Database Seeding

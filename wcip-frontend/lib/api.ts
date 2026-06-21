@@ -65,7 +65,7 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   auth?: boolean;
-  form?: boolean;       // send as x-www-form-urlencoded (login)
+  form?: boolean;       // send as x-www-form-urlencoded
   retry?: boolean;      // internal: prevent infinite refresh loops
 }
 
@@ -136,7 +136,7 @@ export const api = {
     request<User>("/auth/register", { method: "POST", body: { email, password, full_name } }),
   login: async (email: string, password: string) => {
     const pair = await request<TokenPair>("/auth/login", {
-      method: "POST", form: true, body: { username: email, password },
+      method: "POST", body: { email, password },
     });
     tokenStore.set(pair);
     return pair;

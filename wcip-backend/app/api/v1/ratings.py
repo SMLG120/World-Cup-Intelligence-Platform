@@ -40,7 +40,8 @@ def latest_elo_ratings(
             "snapshot_id": "teams-display-cache",
             "data_version": "teams-display-cache",
             "rating_date": today,
-            "source_url": "teams.elo",
+            "source_url": "local-team-table-cache:elo",
+            "source_note": "No versioned Elo snapshot is current; displaying cached Team.elo values last written by Elo seed/refresh.",
             "team_count": len(teams),
             "created_at": None,
             "entries": [
@@ -51,7 +52,7 @@ def latest_elo_ratings(
                     "rating": float(team.elo),
                     "rating_date": today,
                     "data_version": "teams-display-cache",
-                    "source_url": "teams.elo",
+                    "source_url": "local-team-table-cache:elo",
                     "created_at": None,
                 }
                 for index, team in enumerate(teams, start=1)

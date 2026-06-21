@@ -47,6 +47,7 @@ export interface LatestEloSnapshot {
   data_version: string;
   rating_date: string;
   source_url: string;
+  source_note?: string;
   team_count: number;
   created_at: string | null;
   entries: EloRatingEntry[];

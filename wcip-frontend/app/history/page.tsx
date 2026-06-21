@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useSimulations } from "@/lib/queries";
+import { useAuth } from "@/lib/auth-context";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,8 +15,15 @@ const DOT: Record<string, string> = {
   completed: "bg-pitch", failed: "bg-signal", pending: "bg-sky", running: "bg-sky",
 };
 
+function stableDateTime(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().replace("T", " ").slice(0, 16) + " UTC";
+}
+
 function HistoryInner() {
-  const { data, isLoading } = useSimulations(1);
+  const { user } = useAuth();
+  const { data, isLoading, isError, error, refetch } = useSimulations(1, Boolean(user));
   const items: Simulation[] = data?.items ?? [];
 
   return (
@@ -35,6 +43,17 @@ function HistoryInner() {
 
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+      ) : isError ? (
+        <Card>
+          <CardBody className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span className="text-signal">
+              {(error as Error)?.message || "History could not be loaded."}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          </CardBody>
+        </Card>
       ) : items.length === 0 ? (
         <Card><CardBody className="py-16 text-center text-muted text-sm">
           No activity yet. <Link href="/tournament" className="text-pitch hover:underline">Run a simulation</Link>.
@@ -58,7 +77,7 @@ function HistoryInner() {
                       <span className="font-medium group-hover:text-pitch">{sim.name}</span>
                       <span className="text-xs uppercase tracking-wide text-muted">{sim.status}</span>
                       <span className="tnum text-xs text-muted ml-auto">
-                        {new Date(sim.created_at).toLocaleString()}
+                        {stableDateTime(sim.created_at)}
                       </span>
                     </div>
                     <p className="text-xs text-muted mt-0.5">

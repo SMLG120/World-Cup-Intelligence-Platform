@@ -4,9 +4,20 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
+import { ApiError } from "@/lib/api";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+
+function loginErrorMessage(err: unknown) {
+  if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+    return "That email and password did not match an active account.";
+  }
+  if (err instanceof ApiError && err.status === 422) {
+    return "Enter a valid email and password.";
+  }
+  return "We could not sign you in. Check that the backend is running and try again.";
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -24,7 +35,7 @@ export default function LoginPage() {
       await login(email, password);
       router.push("/dashboard");
     } catch (err) {
-      setError((err as Error).message);
+      setError(loginErrorMessage(err));
     } finally {
       setBusy(false);
     }

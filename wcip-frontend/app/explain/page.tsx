@@ -43,6 +43,14 @@ function SHAPWaterfall({
     side: f.side,
   }));
 
+  if (!data.length) {
+    return (
+      <p className="py-10 text-center text-sm text-muted">
+        No SHAP contribution values are available for this model response.
+      </p>
+    );
+  }
+
   return (
     <ResponsiveContainer width="100%" height={Math.max(280, data.length * 36)}>
       <BarChart data={data} layout="vertical" margin={{ left: 12, right: 60, top: 4, bottom: 4 }}>
@@ -86,6 +94,14 @@ function FeatureImportanceChart({ features }: { features: Record<string, number>
   const sorted = Object.entries(features)
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
     .slice(0, 12);
+
+  if (!sorted.length) {
+    return (
+      <p className="py-10 text-center text-sm text-muted">
+        No feature values are available for this matchup.
+      </p>
+    );
+  }
 
   const data = sorted.map(([name, value]) => ({
     name: name.replace(/_/g, " "),
@@ -145,6 +161,8 @@ function ContributionBreakdown({
 }) {
   const totalPositive = positive.reduce((s, f) => s + f.impact, 0);
   const totalNegative = negative.reduce((s, f) => s + f.impact, 0);
+  const positiveDenominator = Math.abs(totalPositive) > 1e-9 ? totalPositive : 1;
+  const negativeDenominator = Math.abs(totalNegative) > 1e-9 ? Math.abs(totalNegative) : 1;
 
   return (
     <div className="grid sm:grid-cols-2 gap-6">
@@ -154,7 +172,7 @@ function ContributionBreakdown({
           <span className="tnum text-xs text-pitch">+{totalPositive.toFixed(3)} net</span>
         </div>
         <div className="space-y-2">
-          {positive.map((f) => (
+          {positive.length ? positive.map((f) => (
             <motion.div
               key={f.name}
               initial={{ opacity: 0, x: -8 }}
@@ -169,14 +187,16 @@ function ContributionBreakdown({
                 <div className="h-1.5 bg-elevated rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: `${(f.impact / totalPositive) * 100}%` }}
+                    animate={{ width: `${Math.max(0, Math.min(100, (f.impact / positiveDenominator) * 100))}%` }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
                     className="h-full bg-pitch rounded-full"
                   />
                 </div>
               </div>
             </motion.div>
-          ))}
+          )) : (
+            <p className="text-sm text-muted">No positive factors returned.</p>
+          )}
         </div>
       </div>
 
@@ -186,7 +206,7 @@ function ContributionBreakdown({
           <span className="tnum text-xs text-signal">{totalNegative.toFixed(3)} net</span>
         </div>
         <div className="space-y-2">
-          {negative.map((f) => (
+          {negative.length ? negative.map((f) => (
             <motion.div
               key={f.name}
               initial={{ opacity: 0, x: 8 }}
@@ -201,14 +221,16 @@ function ContributionBreakdown({
                 <div className="h-1.5 bg-elevated rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: `${(Math.abs(f.impact) / Math.abs(totalNegative)) * 100}%` }}
+                    animate={{ width: `${Math.max(0, Math.min(100, (Math.abs(f.impact) / negativeDenominator) * 100))}%` }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
                     className="h-full bg-signal rounded-full"
                   />
                 </div>
               </div>
             </motion.div>
-          ))}
+          )) : (
+            <p className="text-sm text-muted">No negative factors returned.</p>
+          )}
         </div>
       </div>
     </div>
@@ -253,6 +275,8 @@ export default function ExplainPage() {
 
   const explanation = explanationQuery.data;
   const features = featuresQuery.data?.features;
+  const positiveFactors = Array.isArray(explanation?.top_positive) ? explanation.top_positive : [];
+  const negativeFactors = Array.isArray(explanation?.top_negative) ? explanation.top_negative : [];
 
   const loading = explanationQuery.isLoading || featuresQuery.isLoading;
 
@@ -347,8 +371,8 @@ export default function ExplainPage() {
               <CardBody>
                 <ContributionBreakdown
                   home={home} away={away}
-                  positive={explanation.top_positive}
-                  negative={explanation.top_negative}
+                  positive={positiveFactors}
+                  negative={negativeFactors}
                 />
               </CardBody>
             </Card>
@@ -358,8 +382,8 @@ export default function ExplainPage() {
               <CardHeader><span className="kicker">SHAP waterfall — impact on home-win probability</span></CardHeader>
               <CardBody>
                 <SHAPWaterfall
-                  positive={explanation.top_positive}
-                  negative={explanation.top_negative}
+                  positive={positiveFactors}
+                  negative={negativeFactors}
                 />
               </CardBody>
             </Card>
@@ -390,7 +414,7 @@ export default function ExplainPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...explanation.top_positive, ...explanation.top_negative]
+                    {[...positiveFactors, ...negativeFactors]
                       .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
                       .map((f) => (
                         <tr key={f.name} className="border-b border-line/40 hover:bg-elevated/50 transition-colors">
@@ -406,6 +430,13 @@ export default function ExplainPage() {
                           </td>
                         </tr>
                       ))}
+                    {positiveFactors.length + negativeFactors.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-muted">
+                          No factor rows were returned for this explanation.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </CardBody>

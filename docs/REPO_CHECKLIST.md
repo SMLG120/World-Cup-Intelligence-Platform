@@ -65,6 +65,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ Elo source logging for fetch/load traceability
 - ✅ Legal CSV player-rating import with validation and versioning
 - ✅ Official FIFA squad-list CSV generation for Teams, Scenarios, and player-strength ML features
+- ✅ Official FIFA squad PDF ingestion validation: local DB currently validates with 1,254 players and 48 coaches
 - ✅ Generated player profiles from supported fields only; incomplete rows labelled
 - ✅ Player-derived feature validator for sparse squads, duplicates, rating ranges, position mapping, and NaN/inf safety
 - 📋 Historical FIFA ranking backfill before first snapshot ingestion date
@@ -169,7 +170,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 
 ### Authentication
 - ✅ `POST /auth/register` — account creation
-- ✅ `POST /auth/login` — OAuth2 password flow → access + refresh JWT
+- ✅ `POST /auth/login` — JSON email/password and OAuth2 password form → access + refresh JWT
 - ✅ `POST /auth/refresh` — token refresh
 - ✅ `GET /auth/me` — current user
 
@@ -263,7 +264,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `components/match-predictor.tsx` — team pickers + modifiers
 - ✅ `components/champion-chart.tsx` — champion probability chart (Recharts)
 - ✅ `components/bracket.tsx` — animated knockout bracket
-- ✅ `components/data-freshness.tsx` — freshness strip with admin refresh controls
+- ✅ `components/DataFreshnessCard.tsx` — deterministic freshness card with Elo, FIFA, squad, results, model, snapshot fields and admin refresh controls
+- ✅ `components/data-freshness.tsx` — compatibility re-export for existing freshness strip imports
 
 ### Pages
 - ✅ `/dashboard` — overview, top contenders, recent simulations
@@ -278,6 +280,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `components/winner-predictions-section.tsx` — winner prediction table and charts
 - ✅ Winner prediction sections on `/dashboard`, `/wc2026`, `/predict`
 - ✅ Freshness indicators on `/`, `/dashboard`, `/wc2026`, `/predict`, `/simulate`, `/tournament`, `/teams`, `/team/[id]`, `/player/[id]`, `/models`
+- ✅ `/` — explanatory homepage for Elo, FIFA rankings, squad PDF data, ML models, Poisson/Monte Carlo simulation, and full bracket projection links
 - ✅ `/models` — model metrics, ensemble weights, feature vector explorer
 - ✅ `/simulate` — legacy simulation route redirected to `/wc2026/bracket`
 - ✅ `/tournament` — legacy tournament route redirected to `/wc2026/bracket`
@@ -301,6 +304,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ `wcip-backend/.env.example` — backend placeholder-only local template
 - ✅ `wcip-frontend/.env.local.example` — frontend placeholder-only local template
 - ✅ `wcip-backend/scripts/generate_local_env.py` — secure local env generator
+- ✅ `wcip-backend/scripts/seed_test_user.py` — development/test-only seed for `test@example.com / testtest`
 - ✅ `scripts/check_repo_safety.py` + `make safety-check` — tracked artifact and secret scanner
 - ✅ `SECURITY_CLEANUP.md` — cleanup commands, secret rotation, and never-commit policy
 - 📋 GitHub Actions CI (backend pytest + frontend typecheck on push)
