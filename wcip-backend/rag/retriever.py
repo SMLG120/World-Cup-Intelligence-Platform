@@ -48,6 +48,12 @@ _TERM_EXPANSION: dict[str, list[str]] = {
     "chances": ["probability", "champion"],
     "win": ["champion", "probability", "win"],
     "probability": ["probability", "champion", "win"],
+    "bracket": ["bracket", "knockout", "simulation"],
+    "simulation": ["simulation", "monte", "carlo", "bracket"],
+    "simulate": ["simulation", "monte", "carlo", "bracket"],
+    "bosnia": ["bosnia", "herzegovina", "bih"],
+    "herzegovina": ["bosnia", "herzegovina", "bih"],
+    "bih": ["bosnia", "herzegovina", "bih"],
 }
 
 

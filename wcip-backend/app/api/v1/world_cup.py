@@ -804,8 +804,9 @@ def get_team_detail(team_name: str) -> Dict[str, Any]:
     db = SessionLocal()
     try:
         team = db.scalar(select(Team).where(Team.name == canon))
-        coach = db.scalar(select(Coach).where(Coach.team_name == canon))
-        players = db.scalars(select(Player).where(Player.team_name == canon)).all()
+        team_names = _team_name_variants(canon)
+        coach = db.scalar(select(Coach).where(Coach.team_name.in_(team_names)))
+        players = db.scalars(select(Player).where(Player.team_name.in_(team_names))).all()
 
         squad_stats = _get_squad_stats(canon)
 
@@ -847,7 +848,7 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
     db = SessionLocal()
     try:
         players = db.scalars(
-            select(Player).where(Player.team_name == canon)
+            select(Player).where(Player.team_name.in_(_team_name_variants(canon)))
         ).all()
 
         return {
@@ -894,3 +895,22 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
         }
     finally:
         db.close()
+
+
+def _team_name_variants(team_name: str) -> list[str]:
+    from etl.transform.normalize import canonical
+
+    canon = canonical(team_name)
+    variants = {
+        team_name,
+        canon,
+        canon.replace(" and ", " And "),
+    }
+    if canon == "Bosnia and Herzegovina":
+        variants.update({
+            "Bosnia And Herzegovina",
+            "Bosnia & Herzegovina",
+            "Bosnia-Herzegovina",
+            "BIH",
+        })
+    return sorted(variants)

@@ -94,7 +94,8 @@ The startup seed is lightweight and idempotent. It loads the official 48
 WC2026 teams and group labels, then creates one clearly marked placeholder
 player and coach per team when no verified roster snapshot has been imported.
 Real roster imports use a different `data_source` and replace those placeholder
-rows team by team.
+rows team by team. Startup skips those placeholders once real PDF players or
+coaches exist, so verified squad data is not overwritten on app boot.
 
 ### 2. Generic ETL Pipeline
 
@@ -353,7 +354,31 @@ python -m ml.train --model catboost
 python -m ml.train --model all --full-refresh
 ```
 
-### 6. Prediction Runtime
+### 6. RAG Explanations
+
+RAG is an explanation layer, not a prediction engine. It indexes safe factual
+records from teams, players, coaches, WC2026 groups, and model metadata. It
+never reads `.env` files, tokens, local secrets, private keys, or model weights.
+
+Step by step:
+
+1. `rag/sources.py` turns public database records into indexable text.
+2. `rag/indexer.py` chunks those documents and stores TF-IDF terms.
+3. `rag/retriever.py` retrieves matching chunks, including aliases such as
+   `BIH` for `Bosnia and Herzegovina`.
+4. `rag/generator.py` assembles a factual answer and warns when data is missing.
+5. Prediction or bracket questions are redirected back to `/predict`,
+   `/wc2026/bracket`, or the simulation APIs because RAG does not choose winners.
+
+Commands:
+
+```bash
+cd wcip-backend
+python -m rag.indexer
+pytest -q tests/test_rag_edge_cases.py
+```
+
+### 7. Prediction Runtime
 
 The service bridge is `wcip-backend/app/services/prediction.py`.
 
@@ -467,7 +492,8 @@ The frontend is a Next.js app in `wcip-frontend`.
 - `/teams` lists WC2026 nations with FIFA code, group, confederation, Elo, FIFA
   ranking, coach, squad count, and team-detail links.
 - `/team/[id]` shows one team, its coach, strength summary, and full database
-  squad with position, club, height, caps, and goals.
+  squad with position, club, height, caps, goals, assists, and friendly
+  incomplete-data states.
 - `/player/[id]` shows one player.
 - `/explain` explains feature impacts and SHAP/factor output.
 - `/models` shows model metrics and feature information.
@@ -529,6 +555,10 @@ All backend API routes use the `/api/v1` prefix.
 | `POST` | `/ml/retrain` | Trigger retraining |
 | `POST` | `/ml/etl/run` | Trigger the ETL pipeline |
 | `POST` | `/admin/ml/retrain-if-needed` | Admin retraining threshold check |
+| `POST` | `/rag/ask` | Factual RAG explanation from indexed public records |
+| `GET` | `/rag/status` | RAG index counts and last indexed timestamp |
+| `GET` | `/rag/documents` | Indexed RAG document summaries |
+| `POST` | `/admin/rag/index` | Admin-only RAG index rebuild |
 | `GET` | `/ratings/elo/latest` | Current stored Elo snapshot |
 | `GET` | `/ratings/elo/history/{team_id}` | Versioned Elo history for one team |
 | `GET` | `/rankings/fifa/latest` | Current stored FIFA ranking snapshot |
@@ -704,11 +734,11 @@ python -c "from etl.world_cup_2026.ingest import run_wc2026_seed; print(run_wc20
 
 ### Build FIFA Squad CSV For Teams, Scenarios, And ML
 
-The official FIFA squad-list PDF can be converted into an importer-ready CSV.
-The PDF fields are factual roster fields, not official player ratings. The
-converter derives conservative `fifa_roster_proxy_v1` ratings from position,
-age, caps, goals, and height so the existing player-strength feature pipeline
-has non-neutral squad signal.
+The official FIFA squad-list PDF can be loaded directly into the database or
+converted into an importer-ready CSV. The PDF fields are factual roster fields,
+not official player ratings. The converter derives conservative
+`fifa_roster_proxy_v1` ratings from position, age, caps, goals, and height so
+the existing player-strength feature pipeline has non-neutral squad signal.
 
 Install requirements first so PDF extraction is available:
 
@@ -716,6 +746,15 @@ Install requirements first so PDF extraction is available:
 cd wcip-backend
 source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+Load the PDF directly into `players` and `coaches`:
+
+```bash
+cd wcip-backend
+python -m etl.players.load_squad_pdf \
+  --source-pdf data/external/fifa_wc2026_squad_lists_english.pdf
+python -m scripts.validate_squad_ingestion
 ```
 
 Build the CSV directly from the FIFA source and import it into the database:
@@ -738,6 +777,7 @@ cd wcip-backend
 python -m etl.players.fifa_squad_pdf \
   --source-pdf data/external/fifa_wc2026_squad_lists_english.pdf \
   --import-db
+python -m scripts.validate_squad_ingestion
 ```
 
 Generated CSV:
@@ -745,6 +785,11 @@ Generated CSV:
 ```text
 wcip-backend/data/external/fifa_wc2026_squad_players.csv
 ```
+
+The validator checks 48 WC2026 teams, player coverage for every team, Bosnia and
+Herzegovina aliases (`BIH`, `Bosnia And Herzegovina`, `Bosnia-Herzegovina`,
+`Bosnia & Herzegovina`), Bosnia coach coverage, duplicate squad rows, valid
+positions, valid team mapping, and nonnegative numeric fields.
 
 After import:
 
@@ -882,8 +927,12 @@ Backend:
 
 ```bash
 cd wcip-backend
-env DEBUG=false pytest -q
+alembic upgrade head
+python -m scripts.validate_squad_ingestion
 python -m ml.validate_features
+python -m rag.indexer
+pytest -q tests/test_rag_edge_cases.py
+env DEBUG=false pytest -q
 python -m ml.validate_player_features
 python -m ml.retrain_if_needed
 ```
@@ -916,6 +965,14 @@ Note: in restricted sandboxes, the Monte Carlo tests may fail because
 outside the sandbox if you see `PermissionError: Operation not permitted` from
 `os.sysconf("SC_SEM_NSEMS_MAX")`.
 
+Hydration note: browser password managers can inject attributes such as
+`data-dashlane-rid` into input/button markup before React hydrates. If a
+hydration warning points at the analyst search input but disappears in an
+extension-free/incognito browser, the warning is caused by extension injection,
+not server/client app state. The app still avoids `Date.now()`, `Math.random()`,
+browser storage, and locale-dependent formatting in SSR-critical initial render
+paths.
+
 ## Data Sources
 
 - International match results: `martj42/international_results`
@@ -924,8 +981,8 @@ outside the sandbox if you see `PermissionError: Operation not permitted` from
   stored as immutable snapshots in `fifa_ranking_snapshots` and
   `fifa_ranking_entries`
 - Official WC2026 teams/groups: FIFA standings reference
-- WC2026 live/squad/team data: API-Football / API-SPORTS, `league=1`,
-  `season=2026`
+- WC2026 squad/player/coach data: official FIFA squad-list PDF loaded from
+  `wcip-backend/data/external/fifa_wc2026_squad_lists_english.pdf`
 - Local fallback: `wcip-backend/wcip/data/wc2026.py`
 - Placeholder roster/coach records: `data_source="world_cup_2026_placeholder"`
   until a verified source snapshot is loaded

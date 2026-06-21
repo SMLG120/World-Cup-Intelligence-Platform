@@ -28,17 +28,26 @@ def generate_answer(
 
     Returns: (answer_text, confidence, citations, warnings)
     """
+    query_lower = query.lower()
     if not chunks:
+        warnings = ["No matching documents found in the knowledge base."]
+        if _is_prediction_query(query_lower):
+            warnings.append(
+                "RAG explains retrieved facts only; use Predict, Simulate, or the WC2026 bracket for outcome probabilities."
+            )
+        if _is_player_query(query_lower) or _is_team_query(query_lower):
+            warnings.append(
+                "Team or squad context may be incomplete until the RAG index is rebuilt after data ingestion."
+            )
         return (
-            "I couldn't find relevant data for that query. "
-            "Try asking about a specific team, player, or tournament group.",
+            "I do not have enough indexed data to answer that from the knowledge base. "
+            "Try rebuilding the RAG index, then ask about a specific team, player, squad, model, or tournament group.",
             0.0,
             [],
-            ["No matching documents found in the knowledge base."],
+            warnings,
         )
 
     top_chunk = chunks[0]
-    query_lower = query.lower()
 
     # Determine answer strategy by context
     if _is_prediction_query(query_lower):
@@ -60,6 +69,17 @@ def generate_answer(
         answer = _handle_general_query(query, chunks)
         warnings = []
 
+    if top_chunk.score < 0.5:
+        warnings.append(
+            "Retrieved context is weak; answer may be incomplete until the index is refreshed."
+        )
+    if ("squad" in query_lower or "roster" in query_lower) and not any(
+        c.doc_type == "player" for c in chunks
+    ):
+        warnings.append(
+            "No player-level squad document was retrieved for this query."
+        )
+
     # Append disclaimer
     answer = answer.rstrip() + f"\n\n{_DISCLAIMER}"
 
@@ -70,7 +90,22 @@ def generate_answer(
 
 
 def _is_prediction_query(q: str) -> bool:
-    keywords = ["who will win", "who wins", "chance", "probability", "predict", "favorite", "favourite", "beat"]
+    keywords = [
+        "who will win",
+        "who wins",
+        "chance",
+        "probability",
+        "predict",
+        "favorite",
+        "favourite",
+        "beat",
+        "bracket",
+        "simulation",
+        "simulate",
+        "final",
+        "third place",
+        "third-place",
+    ]
     return any(k in q for k in keywords)
 
 
