@@ -18,10 +18,15 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function stableDate(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
+}
+
 function ProfileInner() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const { data } = useSimulations(1);
+  const { data } = useSimulations(1, Boolean(user));
 
   if (!user) return null;
 
@@ -45,7 +50,7 @@ function ProfileInner() {
             <Row label="Name" value={user.full_name ?? "—"} />
             <Row label="Role" value={user.role} />
             <Row label="Saved simulations" value={String(data?.total ?? 0)} />
-            <Row label="Member since" value={new Date(user.created_at).toLocaleDateString()} />
+            <Row label="Member since" value={stableDate(user.created_at)} />
           </CardBody>
         </Card>
       </motion.div>

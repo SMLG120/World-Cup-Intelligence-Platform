@@ -4,7 +4,7 @@
 
 ## Overview
 
-The ETL pipeline transforms raw international football data from four source
+The ETL pipeline transforms raw international football data from five source
 families into clean, deduplicated, validated tables that power the statistical
 prediction engine, feature engineering, and ML training pipeline.
 
@@ -14,6 +14,7 @@ Data Sources
      ├─ martj42 CSV      (49K+ matches since 1872)
      ├─ eloratings.net   (versioned team Elo ratings)
      ├─ FIFA rankings    (versioned men’s ranking snapshots)
+     ├─ FIFA squad PDF   (WC2026 player and coach facts)
      ├─ player ratings   (legal-source CSV, optional)
      └─ football-data.org API  (squad data, optional)
      │
@@ -61,6 +62,21 @@ Tournament Simulator  (Monte Carlo, parallel)
       ▼
 API Response / Frontend
 ```
+
+Source boundaries:
+
+- Elo ratings come from World Football Elo sources (`eloratings.net` primary,
+  TSV fallback, embedded Elo fallback). If the versioned snapshot table is
+  empty, API display may fall back to cached `teams.elo` values and labels that
+  fallback as `local-team-table-cache:elo`.
+- FIFA rankings come from the official FIFA men's ranking source and are stored
+  as immutable ranking snapshots.
+- FIFA squad PDF data provides roster facts only: player names, positions,
+  clubs, caps, goals, height, DOB, and coaches. It is used for squad/player
+  features, not as an Elo or FIFA ranking source.
+- `/api/v1/data/freshness` exposes stable ISO timestamps and version fields for
+  Elo, FIFA rankings, squad data, match results, model training, feature
+  version, and prediction data snapshot.
 
 ---
 
@@ -185,9 +201,41 @@ away_win:  13,934  (27.8%)
 ### Source Details
 - **Primary URL:** `https://www.eloratings.net/2026_World_Cup`
 - **Fallback URL:** `https://www.eloratings.net/World.tsv`
+- **Static PDF snapshot:** `data/processed/world_football_elo_ratings_2026_06_21.csv`
+  generated from the 2026-06-21 World Football Elo Ratings PDF workflow
 - **License:** Public data; attribution appreciated
 - **Coverage:** All FIFA-affiliated national teams, current ratings
 - **Format:** TSV (tab-separated)
+
+### Static PDF Snapshot Workflow
+
+The 2026-06-21 image-based PDF is handled by:
+
+```bash
+cd wcip-backend
+python -m scripts.convert_elo_pdf_to_csv "/Users/smlgmac/Downloads/World Football Elo Ratings.pdf"
+python -m scripts.validate_elo_csv data/processed/world_football_elo_ratings_2026_06_21.csv
+python -m etl.elo.load_elo_csv data/processed/world_football_elo_ratings_2026_06_21.csv
+```
+
+The converter first tries a PDF text layer, then image OCR. In this local run
+macOS Vision returned OCR observations but no parseable rows, so the converter
+used the official `World.tsv`/`en.teams.tsv` fallback from the same World
+Football Elo site and validated the mandatory PDF top six before writing CSV.
+The loaded snapshot version is `elo-pdf-2026-06-21-960500577039`, with 244 Elo
+rows and 57 local team matches. Static PDF metadata is stored in
+`team_elo_ratings.raw_payload` and `elo_source_logs.metadata_json`.
+
+Mandatory top-six validation:
+
+```text
+Spain 1 2129
+Argentina 2 2128
+France 3 2084
+England 4 2055
+Colombia 5 1998
+Brazil 6 1986
+```
 
 ### Extract Step
 **Files:** `etl/elo/extract_elo.py`, legacy compatibility in `etl/extract/elo_ratings.py`
@@ -350,7 +398,7 @@ Additional FIFA-generated columns such as `source_player_name`, `dob`,
 `source_version` are preserved in row-level import metadata.
 
 ### FIFA Squad PDF Conversion
-**File:** `etl/players/fifa_squad_pdf.py`
+**Files:** `etl/players/fifa_squad_pdf.py`, `etl/players/load_squad_pdf.py`
 
 ```bash
 cd wcip-backend
@@ -373,6 +421,25 @@ python -m etl.players.fifa_squad_pdf \
 
 The command writes `data/external/fifa_wc2026_squad_players.csv`, then imports
 it with `source_name="fifa_wc2026_squad_pdf"` when `--import-db` is provided.
+
+The direct database loader parses the PDF or pre-extracted text and upserts
+players and head coaches:
+
+```bash
+cd wcip-backend
+python -m etl.players.load_squad_pdf --download
+python -m scripts.validate_squad_ingestion
+```
+
+Expected validation target for a complete WC2026 squad source is 48 teams,
+approximately 26 players per team, 1,200+ total players, and 48 coaches. The
+current local validation run reported 1,254 players and 48 coaches, with only
+non-fatal per-team count warnings.
+
+Squad features consumed by prediction code include squad experience, total caps,
+total international goals, positional unit strength, goalkeeper/defensive/
+midfield/attacking experience proxies, availability, player form, weighted
+player strength, and squad depth.
 
 ### Extract/Load Step
 **File:** `etl/player_ratings/csv_import.py`

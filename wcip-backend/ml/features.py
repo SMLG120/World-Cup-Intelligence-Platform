@@ -198,6 +198,68 @@ def _get_latest_elo_snapshot_meta(as_of_date: date | None = None) -> dict:
         return {}
 
 
+def _get_team_elo_metadata(team_name: str, as_of_date: date | None = None) -> dict:
+    try:
+        import json
+
+        from sqlalchemy import select
+        from app.db.base import SessionLocal
+        from app.models.team import EloRatingSnapshot, Team, TeamEloRating
+        from etl.transform.normalize import canonical
+
+        canonical_name = canonical(team_name)
+        db = SessionLocal()
+        try:
+            query = select(EloRatingSnapshot)
+            if as_of_date is not None:
+                query = query.where(EloRatingSnapshot.rating_date <= as_of_date)
+            else:
+                query = query.where(EloRatingSnapshot.is_current.is_(True))
+            snapshot = db.scalar(
+                query.order_by(EloRatingSnapshot.rating_date.desc(), EloRatingSnapshot.id.desc()).limit(1)
+            )
+            if snapshot:
+                rating = db.scalar(
+                    select(TeamEloRating)
+                    .where(
+                        TeamEloRating.snapshot_id == snapshot.id,
+                        TeamEloRating.team_name == canonical_name,
+                    )
+                    .limit(1)
+                )
+                if rating:
+                    raw_payload = {}
+                    if rating.raw_payload:
+                        try:
+                            raw_payload = json.loads(rating.raw_payload)
+                        except Exception:
+                            raw_payload = {}
+                    return {
+                        "elo_rating_used": rating.rating,
+                        "elo_rank_used": rating.rank,
+                        "elo_source": raw_payload.get("source_name") or "World Football Elo",
+                        "elo_source_date": snapshot.rating_date.isoformat(),
+                        "elo_snapshot_version": snapshot.data_version,
+                        "elo_source_url": snapshot.source_url,
+                    }
+
+            team = db.scalar(select(Team).where(Team.name == canonical_name))
+            if team:
+                return {
+                    "elo_rating_used": team.elo,
+                    "elo_rank_used": None,
+                    "elo_source": "teams.elo fallback",
+                    "elo_source_date": None,
+                    "elo_snapshot_version": None,
+                    "elo_source_url": None,
+                }
+            return {}
+        finally:
+            db.close()
+    except Exception:
+        return {}
+
+
 def _get_latest_fifa_snapshot_meta(as_of_date: date | None = None) -> dict:
     try:
         from sqlalchemy import select

@@ -67,8 +67,13 @@ export function useCompareScenarios() {
 
 // ── Simulations (saved, authed) ───────────────────────────────────────────────
 
-export function useSimulations(page = 1) {
-  return useQuery({ queryKey: ["simulations", page], queryFn: () => api.listSimulations(page) });
+export function useSimulations(page = 1, enabled = true) {
+  return useQuery({
+    queryKey: ["simulations", page],
+    queryFn: () => api.listSimulations(page),
+    enabled,
+    retry: false,
+  });
 }
 
 export function useSimulation(id: number) {

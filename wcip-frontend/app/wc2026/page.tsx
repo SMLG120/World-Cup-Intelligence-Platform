@@ -15,7 +15,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataFreshnessStrip } from "@/components/data-freshness";
-import { pct } from "@/lib/utils";
+import { formatProbability, normalizeProbabilityValue } from "@/lib/utils";
 
 function stableDate(value: string | null | undefined) {
   if (!value) return "Unavailable";
@@ -54,7 +54,7 @@ function ContenderRow({ prediction, rank }: { prediction: WorldCupWinnerPredicti
         </div>
       </div>
       <span className="tnum text-sm font-semibold text-pitch">
-        {pct(prediction.champion_probability)}
+        {formatProbability(prediction.champion_probability)}
       </span>
     </div>
   );
@@ -101,7 +101,14 @@ export default function WC2026OverviewPage() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [teams.data]);
 
-  const topPredictions = predictions.data ?? [];
+  const topPredictions = useMemo(
+    () =>
+      (predictions.data ?? []).map((prediction) => ({
+        ...prediction,
+        champion_probability: normalizeProbabilityValue(prediction.champion_probability),
+      })),
+    [predictions.data]
+  );
   const topFour = topPredictions.slice(0, 4);
   const likelyFinal = topPredictions.slice(0, 2);
   const darkHorses = topPredictions.slice(5, 10);
@@ -175,8 +182,8 @@ export default function WC2026OverviewPage() {
         />
         <StatCard
           label="Latest Elo"
-          value={stableDate(freshness.data?.last_elo_rating_date)}
-          detail={freshness.data?.elo_data_version ?? "Snapshot metadata pending"}
+          value={stableDate(topPredictions[0]?.elo_source_date ?? freshness.data?.last_elo_rating_date)}
+          detail={topPredictions[0]?.elo_snapshot_version ?? freshness.data?.elo_data_version ?? "Snapshot metadata pending"}
         />
         <StatCard
           label="Squad status"
@@ -244,7 +251,7 @@ export default function WC2026OverviewPage() {
                       className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-xs"
                     >
                       <span className="truncate text-fg">{prediction.team_name}</span>
-                      <span className="tnum text-pitch">{pct(prediction.champion_probability)}</span>
+                      <span className="tnum text-pitch">{formatProbability(prediction.champion_probability)}</span>
                     </div>
                   ))}
                 </div>

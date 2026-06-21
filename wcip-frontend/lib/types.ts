@@ -47,6 +47,7 @@ export interface LatestEloSnapshot {
   data_version: string;
   rating_date: string;
   source_url: string;
+  source_note?: string;
   team_count: number;
   created_at: string | null;
   entries: EloRatingEntry[];
@@ -368,6 +369,10 @@ export interface WorldCupWinnerPrediction {
   confederation: string;
   fifa_rank: number;
   elo_rating_used?: number;
+  elo_rank_used?: number | null;
+  elo_source?: string | null;
+  elo_source_date?: string | null;
+  elo_snapshot_version?: string | null;
   fifa_ranking_used?: number;
   data_snapshot?: string | null;
   data_snapshot_version?: string | null;

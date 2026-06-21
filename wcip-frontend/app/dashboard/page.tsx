@@ -41,7 +41,7 @@ export default function DashboardPage() {
       <DataFreshnessStrip />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link href="/simulate">
+        <Link href="/predict">
           <Card className="hover:border-pitch transition-colors h-full">
             <CardBody>
               <div className="display text-xl text-pitch">Simulate a match</div>
@@ -49,7 +49,7 @@ export default function DashboardPage() {
             </CardBody>
           </Card>
         </Link>
-        <Link href="/tournament">
+        <Link href="/wc2026/bracket">
           <Card className="hover:border-pitch transition-colors h-full">
             <CardBody>
               <div className="display text-xl text-pitch">Run a tournament</div>

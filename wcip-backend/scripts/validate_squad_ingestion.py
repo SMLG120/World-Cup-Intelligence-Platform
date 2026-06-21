@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 from sqlalchemy import func, select
 
 from app.db.base import SessionLocal
+from app.models.match_result import QualifiedTeam
 from app.models.player import Coach, Player
 from wcip.data.wc2026 import WC2026_TOTAL_TEAMS
 
@@ -48,8 +49,21 @@ def validate() -> bool:
             print(f"PASS  total players = {total}")
 
         # ------------------------------------------------------------------
-        # 2. Per-team player counts
+        # 2. WC2026 team coverage and per-team player counts
         # ------------------------------------------------------------------
+        wc2026_teams = set(
+            db.scalars(
+                select(QualifiedTeam.team_name).where(
+                    QualifiedTeam.tournament_year == 2026
+                )
+            ).all()
+        )
+        if len(wc2026_teams) != WC2026_TOTAL_TEAMS:
+            print(f"FAIL  WC2026 qualified-team registry has {len(wc2026_teams)} teams, expected {WC2026_TOTAL_TEAMS}")
+            ok = False
+        else:
+            print(f"PASS  WC2026 qualified-team registry = {len(wc2026_teams)} teams")
+
         team_counts: dict[str, int] = {}
         rows = db.execute(
             select(Player.team_name, func.count(Player.id).label("n"))
@@ -58,8 +72,18 @@ def validate() -> bool:
         for team_name, n in rows:
             team_counts[team_name] = n
 
-        thin_teams = [t for t, n in team_counts.items() if n < MIN_PLAYERS_PER_TEAM]
-        fat_teams  = [t for t, n in team_counts.items() if n > MAX_PLAYERS_PER_TEAM]
+        missing_teams = sorted(t for t in wc2026_teams if team_counts.get(t, 0) == 0)
+        extra_teams = sorted(t for t in team_counts if t not in wc2026_teams)
+        if missing_teams:
+            print(f"FAIL  {len(missing_teams)} WC2026 team(s) have no players: {missing_teams[:5]}")
+            ok = False
+        else:
+            print(f"PASS  all {WC2026_TOTAL_TEAMS} WC2026 teams have player rows")
+        if extra_teams:
+            print(f"WARN  {len(extra_teams)} non-WC2026 team(s) have player rows: {extra_teams[:5]}")
+
+        thin_teams = [t for t in wc2026_teams if team_counts.get(t, 0) < MIN_PLAYERS_PER_TEAM]
+        fat_teams = [t for t in wc2026_teams if team_counts.get(t, 0) > MAX_PLAYERS_PER_TEAM]
 
         if thin_teams:
             print(f"WARN  {len(thin_teams)} team(s) have < {MIN_PLAYERS_PER_TEAM} players: {thin_teams[:5]}")

@@ -42,6 +42,17 @@ deleting local copies using the commands documented in `SECURITY_CLEANUP.md`.
 - Frontend accepts both:
   - `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
   - `NEXT_PUBLIC_API_BASE=/backend/api/v1`
+- Local development/test login can be seeded with:
+
+```bash
+cd wcip-backend
+python -m scripts.seed_test_user
+```
+
+- The seed creates `test@example.com` with password `testtest`, is idempotent,
+  and refuses to run outside development/test/local environments.
+- `POST /api/v1/auth/login` accepts JSON (`email`, `password`) and OAuth2 form
+  (`username`, `password`) request bodies.
 
 ## Production Secrets
 
@@ -53,10 +64,19 @@ in production.
 
 - Elo is versioned through `elo_rating_snapshots`, `team_elo_ratings`, and
   `elo_source_logs`. `teams.elo` remains only a current display/cache value.
+- Elo must come from World Football Elo sources (`eloratings.net` or the
+  embedded Elo fallback). The FIFA squad PDF must never be treated as an Elo
+  source.
 - FIFA rankings remain versioned through `fifa_ranking_snapshots`,
   `fifa_ranking_entries`, `team_rankings`, and `ranking_source_logs`.
   `teams.fifa_rank` remains only a current display/cache value.
+- FIFA rankings must come from the official FIFA ranking source, not the squad
+  PDF or Elo tables.
 - Public freshness metadata is served by `GET /api/v1/data/freshness`.
+- Freshness frontend fields should include Elo updated, FIFA ranking updated,
+  squad data updated, latest results updated, model trained, feature version,
+  and prediction data snapshot version. Format backend ISO timestamps
+  deterministically to avoid hydration mismatches.
 - Public Elo APIs are:
   - `GET /api/v1/ratings/elo/latest`
   - `GET /api/v1/ratings/elo/history/{team_id}`
@@ -76,12 +96,25 @@ in production.
   `player_rating` values are conservative `fifa_roster_proxy_v1` features
   derived from age, position, caps, goals, and height; they are not official
   FIFA or scouting ratings.
+- Hydration warning containing `data-dashlane-rid` is usually Dashlane browser
+  extension injection. Still avoid app-code mismatches from render-time locale
+  dates, `Date.now()`, `Math.random()`, and `typeof window` branches in JSX.
 - `ml.validate_features` checks feature count/order and NaN/inf safety.
 - `ml.validate_player_features` checks player coverage, duplicate rows, rating
   ranges, position mapping, null-heavy fields, feature-order compatibility, and
   player-feature NaN/inf safety.
 - `ml.retrain_if_needed` marks active model registry rows for recalibration only
   when data changes cross configured thresholds.
+- Winner prediction probabilities are backend/API fractions (`0.0` to `1.0`).
+  Use frontend `formatProbability()` for display and
+  `normalizeProbabilityValue()` only as a defensive legacy compatibility layer.
+- Static World Football Elo PDF workflow:
+  `python -m scripts.convert_elo_pdf_to_csv`,
+  `python -m scripts.validate_elo_csv`, then
+  `python -m etl.elo.load_elo_csv`. The current static snapshot is
+  `elo-pdf-2026-06-21-960500577039`, source date `2026-06-21`, 244 rows, 57
+  local team matches. Local OCR was unavailable in this run, so the converter
+  used the official `World.tsv` fallback after validating the PDF top six.
 
 ## RAG System
 

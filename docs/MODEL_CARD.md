@@ -118,6 +118,18 @@ value rather than using the current ranking. Elo uses the same point-in-time
 pattern through versioned `elo_rating_snapshots` / `team_elo_ratings`, then
 falls back to legacy `elo_history` only when no immutable snapshot exists.
 
+**Probability standard:** Backend prediction services use fraction-unit
+probabilities internally and in JSON responses. A value of `0.14232` represents
+`14.2%`; values must be finite, nonnegative, no greater than `1.0`, and champion
+probability distributions should sum to approximately `1.0`. Frontend display
+helpers perform the single conversion to percent text and normalize legacy
+percent-unit responses only as a defensive compatibility layer.
+
+**Current Elo snapshot:** The static World Football Elo PDF snapshot dated
+2026-06-21 is loaded as `elo-pdf-2026-06-21-960500577039`. It contributes Elo
+rating/rank inputs to match features and winner predictions but is not used to
+force winner ordering.
+
 ---
 
 ## Models

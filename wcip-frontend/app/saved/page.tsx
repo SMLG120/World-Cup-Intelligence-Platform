@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   useSimulations, useDeleteSimulation, useDuplicateSimulation, useUpdateSimulation,
   useCompareSavedSimulations,
 } from "@/lib/queries";
+import { useAuth } from "@/lib/auth-context";
 import { RequireAuth } from "@/components/require-auth";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,11 @@ const STATUS_COLOR: Record<string, string> = {
   failed: "text-signal border-signal/40",
 };
 
+function stableDate(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
+}
+
 function SimRow({
   sim,
   selected,
@@ -43,13 +49,16 @@ function SimRow({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(sim.name);
   const [editing, setEditing] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
   const del = useDeleteSimulation();
   const dup = useDuplicateSimulation();
   const upd = useUpdateSimulation();
 
   const champ = sim.result?.teams?.[0];
-  const shareUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/share/${sim.public_token}` : "";
+
+  useEffect(() => {
+    setShareUrl(`${window.location.origin}/share/${sim.public_token}`);
+  }, [sim.public_token]);
 
   return (
     <Card>
@@ -72,7 +81,7 @@ function SimRow({
           </span>
           {sim.is_public && <Badge className="text-sky border-sky/40">public</Badge>}
           <span className="tnum text-xs text-muted ml-auto">
-            {new Date(sim.created_at).toLocaleDateString()}
+            {stableDate(sim.created_at)}
           </span>
         </div>
 
@@ -131,7 +140,8 @@ function SimRow({
 }
 
 function SavedInner() {
-  const { data, isLoading } = useSimulations();
+  const { user } = useAuth();
+  const { data, isLoading, isError, error, refetch } = useSimulations(1, Boolean(user));
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const compare = useCompareSavedSimulations();
   const comparison = compare.data as CompareResult | undefined;
@@ -203,6 +213,17 @@ function SavedInner() {
 
       {isLoading ? (
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)}</div>
+      ) : isError ? (
+        <Card>
+          <CardBody className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span className="text-signal">
+              {(error as Error)?.message || "Saved simulations could not be loaded."}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              Retry
+            </Button>
+          </CardBody>
+        </Card>
       ) : !data || data.items.length === 0 ? (
         <Card><CardBody className="py-16 text-center text-muted text-sm">
           No saved simulations yet.{" "}

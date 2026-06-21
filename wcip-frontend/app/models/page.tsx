@@ -148,7 +148,7 @@ function fmtMetric(value: number | null | undefined, digits = 3): string {
 function fmtDate(value: string | null | undefined): string {
   if (!value) return "Unavailable";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "Unavailable" : parsed.toLocaleDateString();
+  return Number.isNaN(parsed.getTime()) ? "Unavailable" : parsed.toISOString().slice(0, 10);
 }
 
 function statusLabel(model: MLModel): string {
@@ -275,6 +275,7 @@ export default function ModelsPage() {
   const [featHome, setFeatHome] = useState("France");
   const [featAway, setFeatAway] = useState("Brazil");
   const [featLoading, setFeatLoading] = useState(false);
+  const [featError, setFeatError] = useState<string | null>(null);
 
   const modelViews = useMemo(() => normalizeModels(models), [models]);
   const latestModel = modelViews
@@ -303,9 +304,13 @@ export default function ModelsPage() {
 
   async function loadFeatures() {
     setFeatLoading(true);
+    setFeatError(null);
     try {
       const fv = await api.mlFeatures(featHome, featAway);
       setFeatures(fv.features);
+    } catch (err) {
+      setFeatures(null);
+      setFeatError(err instanceof Error ? err.message : "Feature vector could not be loaded.");
     } finally {
       setFeatLoading(false);
     }
@@ -500,7 +505,11 @@ export default function ModelsPage() {
                   {featLoading ? "Computing" : "Compute Features"}
                 </Button>
               </div>
-              {features ? (
+              {featError ? (
+                <div className="rounded-lg border border-signal/30 bg-signal/10 px-4 py-3 text-sm text-signal">
+                  {featError}
+                </div>
+              ) : features ? (
                 <FeatureImportanceChart features={features} />
               ) : (
                 <p className="py-6 text-center text-sm text-gray-500">
