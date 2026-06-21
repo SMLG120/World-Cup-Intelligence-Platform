@@ -1,14 +1,13 @@
-# World Cup Intelligence Platform — Frontend (Next.js 15)
+# World Cup Intelligence Platform — Frontend (Next.js)
 
 The web client for the platform. Consumes the FastAPI backend's REST API to
 predict matches, run Monte Carlo tournament simulations, and browse teams.
 
-> Verified: `tsc --noEmit` passes and `next build` compiles all 10 routes
-> cleanly (Google Fonts require network at build time).
+> Verified locally with `npm run typecheck` and `npm run build`.
 
 ## Stack
 
-Next.js 15 (App Router) · React 19 · TypeScript · TailwindCSS · TanStack Query ·
+Next.js App Router · React 19 · TypeScript · TailwindCSS · TanStack Query ·
 Recharts · Framer Motion · React Hook Form + Zod · Zustand. Auth consumes the
 backend's JWT endpoints directly via a typed client with transparent refresh.
 
@@ -63,9 +62,33 @@ avoids CORS in dev. Run the backend (`uvicorn app.main:app`) alongside.
 
 ## Deployment (Vercel)
 
-Set `NEXT_PUBLIC_API_BASE=/backend/api/v1` and edit the rewrite in `vercel.json`
-to point `/backend/*` at your Render API URL. Also add the Vercel domain to the
-backend's `BACKEND_CORS_ORIGINS`.
+This folder is the real Vercel project root. In the Vercel dashboard use:
+
+```text
+Root Directory: wcip-frontend
+Framework Preset: Next.js
+Install Command: npm install
+Build Command: npm run build
+Output Directory: .next
+```
+
+Set production environment variables in Vercel:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://YOUR_BACKEND_URL
+NEXT_PUBLIC_APP_NAME=World Cup Intelligence Platform
+NEXT_PUBLIC_ENABLE_ML=true
+NEXT_PUBLIC_ENABLE_SCENARIOS=true
+NEXT_PUBLIC_ENABLE_EXPLAINABILITY=true
+```
+
+Do not use `localhost` for `NEXT_PUBLIC_API_BASE_URL` in production. Deploy the
+FastAPI backend separately, then point the frontend at that backend URL. Also
+add the Vercel domain to the backend's CORS allow-list.
+
+If Vercel reports `Couldn't find any pages or app directory`, it is building
+from the repository root instead of this folder. Set the Vercel Root Directory
+to `wcip-frontend`; do not create a fake app directory at the repo root.
 
 ## Auth note
 

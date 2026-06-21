@@ -306,6 +306,9 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 
 - ✅ Dockerfile + docker-compose.yml (api + worker + beat + postgres + redis)
 - ✅ render.yaml — Render deployment blueprint
+- ✅ `vercel.json` — root-level defensive Vercel config delegates builds to `wcip-frontend`
+- ✅ `wcip-frontend/vercel.json` — Next.js Vercel config for the correct frontend project root
+- ✅ `DEPLOYMENT.md` — Vercel frontend / separate FastAPI backend deployment guide
 - ✅ alembic/ — database migrations
 - ✅ `.env.example` with all required config keys documented
 - ✅ `wcip-backend/.env.example` — backend placeholder-only local template

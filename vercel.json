@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "npm --prefix wcip-frontend install",
+  "buildCommand": "npm --prefix wcip-frontend run vercel-build",
+  "outputDirectory": "wcip-frontend/.next"
+}

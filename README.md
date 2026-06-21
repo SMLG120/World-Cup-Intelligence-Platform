@@ -641,6 +641,44 @@ Frontend public variables are documented in
 `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` and the older
 `NEXT_PUBLIC_API_BASE=/backend/api/v1` proxy form.
 
+### Frontend Deployment On Vercel
+
+This repository is a monorepo. The actual Next.js app is not at the repository
+root; it lives in `wcip-frontend/`.
+
+Use these Vercel settings:
+
+```text
+Root Directory: wcip-frontend
+Framework Preset: Next.js
+Install Command: npm install
+Build Command: npm run build
+Output Directory: .next
+```
+
+Set these Vercel environment variables:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://YOUR_BACKEND_URL
+NEXT_PUBLIC_APP_NAME=World Cup Intelligence Platform
+NEXT_PUBLIC_ENABLE_ML=true
+NEXT_PUBLIC_ENABLE_SCENARIOS=true
+NEXT_PUBLIC_ENABLE_EXPLAINABILITY=true
+```
+
+The frontend build must not start or deploy the FastAPI backend. Deploy the
+backend separately on Render, Railway, Fly.io, AWS, or another Python/Docker
+host, then point `NEXT_PUBLIC_API_BASE_URL` at that deployed backend.
+
+If Vercel says:
+
+```text
+Couldn't find any `pages` or `app` directory
+```
+
+then Vercel is building from the wrong folder. Set the Vercel Root Directory to
+`wcip-frontend`. Do not create a fake root-level `app/` directory.
+
 ### Full Stack With Docker
 
 ```bash
@@ -997,6 +1035,8 @@ paths.
 - Use Redis for cache and Celery broker/result backend.
 - Set `CORS_ORIGINS` or `BACKEND_CORS_ORIGINS` to the deployed frontend origin.
 - Set `NEXT_PUBLIC_API_BASE_URL` to the deployed backend origin.
+- In Vercel, set the frontend Root Directory to `wcip-frontend`; the repository
+  root is not the Next.js app.
 - Run Alembic migrations before serving production traffic.
 - Run WC2026 seed ETL from a vetted source snapshot when tournament rosters are
   updated.

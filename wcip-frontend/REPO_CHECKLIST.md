@@ -5,6 +5,7 @@ Tracks the Next.js frontend build. ✅ done · 🔲 follows established pattern.
 ## Foundation
 - ✅ `package.json` — deps (Next 15, React 19, TS, Tailwind, React Query, Recharts, Zod, RHF, Framer Motion)
 - ✅ `tsconfig.json`, `next.config.mjs`, `postcss.config.mjs`
+- ✅ `vercel.json` — Vercel config for Root Directory `wcip-frontend`, build command `npm run vercel-build`, output `.next`
 - ✅ `tailwind.config.ts` — design tokens (scoreboard theme)
 - ✅ `app/globals.css` — CSS variables, fonts, grain, base styles
 - ✅ `.env.local.example`
@@ -54,5 +55,9 @@ Tracks the Next.js frontend build. ✅ done · 🔲 follows established pattern.
 ## Notes
 - Auth consumes the backend's own JWT endpoints directly. NextAuth + Google/GitHub
   OAuth is the production extension (backend already has the OAuth config fields).
-- Verified: `tsc --noEmit` clean and `next build` compiles all 16 routes.
-  (Google Fonts require network at build time — works on Vercel.)
+- Vercel must use Root Directory `wcip-frontend`; the repository root does not
+  contain the Next.js `app/` directory.
+- Required production env vars: `NEXT_PUBLIC_API_BASE_URL`,
+  `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_ENABLE_ML`,
+  `NEXT_PUBLIC_ENABLE_SCENARIOS`, and `NEXT_PUBLIC_ENABLE_EXPLAINABILITY`.
+- Verified command set: `npm install`, `npm run typecheck`, `npm run build`.
