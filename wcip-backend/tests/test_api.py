@@ -1,4 +1,5 @@
 """Prediction, simulation, and scenario API tests."""
+import math
 
 
 def test_list_teams_seeded(client):
@@ -35,6 +36,28 @@ def test_team_contract_includes_wc2026_metadata_and_squad(client):
     body = squad.json()
     assert body["team"]["name"] == "Mexico"
     assert body["squad_count"] == len(body["squad"])
+
+
+def test_bosnia_alias_squad_contract_uses_real_pdf_rows(client):
+    from etl.players.load_squad_pdf import load_squad_from_pdf
+
+    load_squad_from_pdf(source_pdf="data/external/fifa_wc2026_squad_lists_english.pdf")
+    teams = client.get("/api/v1/teams").json()
+    bosnia = next(team for team in teams if team["name"] == "Bosnia and Herzegovina")
+    assert bosnia["coach"] == "Sergej Barbarez"
+    assert bosnia["squad_count"] >= 20
+
+    squad = client.get(f"/api/v1/teams/{bosnia['id']}/squad")
+    assert squad.status_code == 200
+    body = squad.json()
+    player_names = {player["name"] for player in body["squad"]}
+    assert "Edin Dzeko" in player_names
+    assert "Roster pending" not in player_names
+    assert body["coach"] == "Sergej Barbarez"
+
+    alias = client.get("/api/v1/world-cup/players/BIH")
+    assert alias.status_code == 200
+    assert len(alias.json()["squad"]) == body["squad_count"]
 
 
 def test_match_simulate_probabilities(client):
@@ -119,6 +142,12 @@ def test_world_cup_2026_simulation_runs(client):
         total = probs["home_win"] + probs["draw"] + probs["away_win"]
         assert abs(total - 1.0) < 1e-5
         assert all(0 <= probs[k] <= 1 for k in ("home_win", "draw", "away_win"))
+
+    champion_total = sum(team["champion"] for team in body["teams"])
+    assert abs(champion_total - 1.0) < 1e-3
+    for row in body["teams"]:
+        assert all(math.isfinite(row[key]) for key in ("champion", "final", "semi", "quarter", "round_of_32", "round_of_16"))
+        assert 0 <= row["champion"] <= row["final"] <= row["semi"] <= row["quarter"] <= row["round_of_16"] <= row["round_of_32"] <= 1
 
 
 def test_world_cup_2026_knockout_elimination_integrity(client):

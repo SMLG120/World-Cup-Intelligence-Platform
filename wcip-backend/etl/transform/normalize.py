@@ -39,8 +39,11 @@ NAME_MAP: Dict[str, str] = {
     "CZE": "Czechia",
 
     # ── Bosnia and Herzegovina ───────────────────────────────────────────────
+    "Bosnia And Herzegovina": "Bosnia and Herzegovina",
     "Bosnia & Herzegovina": "Bosnia and Herzegovina",
     "Bosnia-Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia/Herzegovina": "Bosnia and Herzegovina",
     "Bosnia": "Bosnia and Herzegovina",
     "BIH": "Bosnia and Herzegovina",
 

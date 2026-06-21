@@ -130,21 +130,25 @@ def fetch_coach_documents(db: Session) -> list[RawDocument]:
 def fetch_wc2026_group_documents(db: Session) -> list[RawDocument]:
     """Index WC2026 group stage assignments."""
     try:
-        from sqlalchemy import text
-        rows = db.execute(text(
-            "SELECT t.name, t.code, q.group_letter, t.elo, t.fifa_rank "
-            "FROM qualified_teams q JOIN teams t ON q.team_id = t.id "
-            "ORDER BY q.group_letter, t.fifa_rank"
-        )).fetchall()
+        from app.models.match_result import QualifiedTeam
+        from app.models.team import Team
+
+        rows = (
+            db.query(QualifiedTeam, Team)
+            .join(Team, Team.name == QualifiedTeam.team_name)
+            .filter(QualifiedTeam.tournament_year == 2026)
+            .order_by(QualifiedTeam.group_label, Team.fifa_rank, Team.name)
+            .all()
+        )
     except Exception as exc:
         logger.warning("Could not fetch WC2026 group data: %s", exc)
         return []
 
     groups: dict[str, list[str]] = {}
-    for row in rows:
-        letter = row[2] or "?"
+    for qualified, team in rows:
+        letter = qualified.group_label or "?"
         groups.setdefault(letter, []).append(
-            f"  {row[0]} ({row[1]}) — Elo {row[3]:.0f}, FIFA rank #{row[4]}"
+            f"  {team.name} ({team.code}) - Elo {team.elo:.0f}, FIFA rank #{team.fifa_rank}"
         )
 
     docs: list[RawDocument] = []

@@ -6,6 +6,7 @@ import type { RagAnswer, RagAskRequest } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RagAnswerCard } from "@/components/RagAnswerCard";
+import { AlertCircle, RotateCcw } from "lucide-react";
 
 interface AskAnalystBoxProps {
   placeholder?: string;
@@ -26,6 +27,7 @@ export function AskAnalystBox({
   const [answer, setAnswer] = useState<RagAnswer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canAsk = query.trim().length >= 3 && !loading;
 
   async function handleAsk() {
     const q = query.trim();
@@ -44,7 +46,8 @@ export function AskAnalystBox({
       const result = await ragApi.ask(req);
       setAnswer(result);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to get answer.");
+      const detail = err instanceof Error ? err.message : "The analyst service did not respond.";
+      setError(`Analyst answer unavailable. ${detail}`);
     } finally {
       setLoading(false);
     }
@@ -68,7 +71,7 @@ export function AskAnalystBox({
         />
         <Button
           onClick={handleAsk}
-          disabled={loading || query.trim().length < 3}
+          disabled={!canAsk}
           size="sm"
         >
           {loading ? "Thinking..." : "Ask Analyst"}
@@ -76,7 +79,23 @@ export function AskAnalystBox({
       </div>
 
       {error && (
-        <p className="text-xs text-red-500">{error}</p>
+        <div className="flex items-start gap-2 rounded-md border border-signal/30 bg-signal/8 px-3 py-2 text-xs text-signal">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p>{error}</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-1 h-7 px-2 text-signal"
+              onClick={handleAsk}
+              disabled={!canAsk}
+            >
+              <RotateCcw className="mr-1 h-3 w-3" />
+              Retry
+            </Button>
+          </div>
+        </div>
       )}
 
       {answer && <RagAnswerCard answer={answer} />}

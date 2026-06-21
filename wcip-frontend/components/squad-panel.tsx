@@ -23,6 +23,19 @@ const POSITION_LABELS: Record<string, string> = {
   FWD: "Forwards",
 };
 
+function positionGroup(position?: string | null) {
+  const value = (position ?? "").toUpperCase();
+  if (value === "GK") return "GK";
+  if (value === "DF" || value === "DEF") return "DEF";
+  if (value === "MF" || value === "MID") return "MID";
+  if (value === "FW" || value === "FWD") return "FWD";
+  return value || "Unknown";
+}
+
+function formatInteger(value: number) {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
 // ── Player row ────────────────────────────────────────────────────────────────
 function PlayerRow({ player, rank }: { player: Player; rank: number }) {
   const displayName = player.name_on_shirt ?? player.name;
@@ -105,7 +118,7 @@ export function SquadPanel({ teamName, onClose }: SquadPanelProps) {
     const players = squadData?.squad ?? [];
     const groups: Record<string, Player[]> = {};
     for (const p of players) {
-      const pos = p.position ?? "Unknown";
+      const pos = positionGroup(p.position);
       if (!groups[pos]) groups[pos] = [];
       groups[pos].push(p);
     }
@@ -219,7 +232,7 @@ export function SquadPanel({ teamName, onClose }: SquadPanelProps) {
                     <div className="px-4 py-3 border-b border-line/50">
                       <div className="flex gap-2 justify-around">
                         <StatChip label="Players" value={totalPlayers} />
-                        <StatChip label="Total caps" value={totalCaps.toLocaleString()} />
+                        <StatChip label="Total caps" value={formatInteger(totalCaps)} />
                         {topScorer && (topScorer.international_goals ?? 0) > 0 && (
                           <StatChip
                             label="Top scorer"
@@ -243,8 +256,7 @@ export function SquadPanel({ teamName, onClose }: SquadPanelProps) {
                     <div className="mx-4 mt-3 px-3 py-2 rounded-md border border-[hsl(45_95%_58%/0.5)] bg-[hsl(45_95%_58%/0.07)] flex items-start gap-2">
                       <ShieldAlert className="h-3.5 w-3.5 text-[hsl(45_95%_58%)] mt-0.5 shrink-0" />
                       <p className="text-[11px] text-[hsl(45_95%_58%)] leading-snug">
-                        Squad data incomplete ({totalPlayers} players). Ingest
-                        the FIFA PDF to see the full roster.
+                        Squad data incomplete — check ingestion status.
                       </p>
                     </div>
                   )}
@@ -253,8 +265,7 @@ export function SquadPanel({ teamName, onClose }: SquadPanelProps) {
                     <div className="mx-4 mt-3 px-3 py-2 rounded-md border border-signal/30 bg-signal/8 flex items-start gap-2">
                       <ShieldAlert className="h-3.5 w-3.5 text-signal mt-0.5 shrink-0" />
                       <p className="text-[11px] text-signal leading-snug">
-                        No squad data available. Ingest the FIFA WC 2026 squad
-                        PDF via Admin → Ingest Squad PDF.
+                        Squad data incomplete — check ingestion status.
                       </p>
                     </div>
                   )}
@@ -342,7 +353,7 @@ function SimExplanation({
 }) {
   const totalCaps = players.reduce((s, p) => s + (p.international_caps ?? 0), 0);
   const avgCaps = players.length ? Math.round(totalCaps / players.length) : 0;
-  const gks = players.filter((p) => p.position === "GK");
+  const gks = players.filter((p) => positionGroup(p.position) === "GK");
   const avgGkHeight =
     gks.length
       ? Math.round(
@@ -350,7 +361,7 @@ function SimExplanation({
         )
       : null;
   const topAttackers = [...players]
-    .filter((p) => p.position === "FWD")
+    .filter((p) => positionGroup(p.position) === "FWD")
     .sort((a, b) => (b.international_goals ?? 0) - (a.international_goals ?? 0))
     .slice(0, 2);
 

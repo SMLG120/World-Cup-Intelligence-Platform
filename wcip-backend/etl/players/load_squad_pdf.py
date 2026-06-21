@@ -42,9 +42,10 @@ logger = logging.getLogger(__name__)
 
 MIN_PLAYER_COUNT = 1_000
 SOURCE_NAME = "FIFA World Cup 2026 Squad PDF"
+PLACEHOLDER_SOURCE = "world_cup_2026_placeholder"
 
 _COACH_ROLES = re.compile(
-    r"^(?P<role>Head Coach|Assistant Coach|Goalkeeper Coach|Fitness Coach|Coach)\s+"
+    r"^(?P<role>Head\s*Coach|Assistant\s*Coach|Goalkeeper\s*Coach|Fitness\s*Coach|Coach)\s*"
     r"(?P<rest>.+)$",
     re.IGNORECASE,
 )
@@ -106,6 +107,7 @@ def load_squad_from_pdf(
 
     players_upserted = _upsert_players(players, source_version)
     coaches_upserted = _upsert_coaches(coaches, source_version)
+    _invalidate_squad_caches()
 
     result = {
         "players_parsed": len(players),
@@ -117,6 +119,15 @@ def load_squad_from_pdf(
     }
     logger.info("Squad load complete: %s", result)
     return result
+
+
+def _invalidate_squad_caches() -> None:
+    try:
+        from app.core.cache import cache
+
+        cache.invalidate_prefix("teams:")
+    except Exception:
+        logger.debug("Could not invalidate squad-related cache", exc_info=True)
 
 
 def _get_source_text(
@@ -173,24 +184,22 @@ def _try_parse_coach_line(
     role_match = _COACH_ROLES.match(line)
     if not role_match:
         return None
-    role = role_match.group("role").title()
+    role = _normalize_coach_role(role_match.group("role"))
     rest = role_match.group("rest").strip()
 
     name_match = _NAME_NATIONALITY_RE.match(rest)
-    if not name_match:
-        return None
+    if name_match:
+        head = name_match.group("head").strip()
+        nationality = name_match.group("nationality").strip()
+        dob = name_match.group("dob")
+    else:
+        head = rest
+        nationality = _infer_coach_nationality(rest, team_name)
+        if nationality and head.endswith(nationality):
+            head = head[: -len(nationality)].strip()
+        dob = None
 
-    head = name_match.group("head").strip()
-    nationality = name_match.group("nationality").strip()
-    dob = name_match.group("dob")
-
-    # Head contains "LAST_NAME(S) first_name(s)" in FIFA PDF style
-    tokens = head.split()
-    upper_tokens = [t for t in tokens if t.isupper() or not t[0].isalpha()]
-    lower_tokens = [t for t in tokens if not t.isupper() and t[0].isalpha()]
-    last_names = " ".join(upper_tokens) if upper_tokens else head
-    first_names = " ".join(lower_tokens) if lower_tokens else ""
-    display_name = f"{first_names} {last_names.title()}".strip()
+    display_name, first_names, last_names = _parse_coach_display_name(head)
 
     return {
         "name": display_name or head,
@@ -204,6 +213,93 @@ def _try_parse_coach_line(
     }
 
 
+def _parse_coach_display_name(head: str) -> tuple[str, str, str]:
+    """Parse FIFA coach name fields into a stable display name."""
+    tokens = head.split()
+    if not tokens:
+        return head, "", head
+
+    surname_tokens: list[str] = []
+    while tokens and _is_upperish_token(tokens[0]):
+        surname_tokens.append(tokens.pop(0))
+
+    if not surname_tokens:
+        return head.title(), "", head
+
+    given_tokens: list[str] = []
+    for token in tokens:
+        if _is_upperish_token(token):
+            break
+        given_tokens.append(token)
+
+    given_tokens = _dedupe_repeated_prefix(given_tokens)
+    surname_keys = {_normalise_name_token(token) for token in surname_tokens}
+    given_tokens = [
+        token for token in given_tokens
+        if _normalise_name_token(token) not in surname_keys
+    ]
+    first_names = " ".join(given_tokens)
+    last_names = " ".join(surname_tokens)
+    display = f"{first_names} {_smart_name(last_names)}".strip()
+    return display or _smart_name(last_names), first_names, last_names
+
+
+def _dedupe_repeated_prefix(tokens: list[str]) -> list[str]:
+    if len(tokens) < 2:
+        return tokens
+    max_size = len(tokens) // 2
+    norm_tokens = [_normalise_name_token(token) for token in tokens]
+    for size in range(max_size, 0, -1):
+        if norm_tokens[:size] == norm_tokens[size:size * 2]:
+            return tokens[:size] + tokens[size * 2:]
+    return tokens
+
+
+def _is_upperish_token(token: str) -> bool:
+    letters = [char for char in token if char.isalpha()]
+    return bool(letters) and token.upper() == token
+
+
+def _smart_name(value: str) -> str:
+    return " ".join(part.capitalize() for part in value.split())
+
+
+def _normalise_name_token(token: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", token.lower())
+
+
+def _normalize_coach_role(role: str) -> str:
+    words = re.findall(r"[A-Za-z]+", role)
+    return " ".join(word.capitalize() for word in words) or "Head Coach"
+
+
+def _infer_coach_nationality(rest: str, team_name: str) -> str | None:
+    candidates = {
+        team_name,
+        canonical(team_name),
+        "Argentina",
+        "Brazil",
+        "Cabo Verde",
+        "Canada",
+        "Colombia",
+        "Croatia",
+        "England",
+        "France",
+        "Germany",
+        "Italy",
+        "Portugal",
+        "Spain",
+        "Switzerland",
+        "USA",
+        "United States",
+    }
+    for candidate in sorted(candidates, key=len, reverse=True):
+        if rest.endswith(candidate):
+            return candidate
+    tokens = rest.split()
+    return tokens[-1] if tokens else None
+
+
 def _upsert_players(players: list[FifaSquadPlayer], source_version: str) -> int:
     db = SessionLocal()
     upserted = 0
@@ -211,19 +307,25 @@ def _upsert_players(players: list[FifaSquadPlayer], source_version: str) -> int:
     try:
         teams = db.scalars(select(Team)).all()
         team_by_name = {canonical(t.name): t for t in teams}
+        affected_teams: set[str] = set()
 
         for p in players:
             canon_team = canonical(p.team_name)
+            affected_teams.add(canon_team)
+            _delete_placeholder_players(db, canon_team)
             existing = db.scalar(
-                select(Player).where(
-                    Player.team_name == canon_team,
+                select(Player)
+                .where(
+                    Player.team_name.in_(_team_name_variants(canon_team)),
                     Player.name == p.player_name,
                 )
+                .limit(1)
             )
             if existing is None:
                 existing = Player(name=p.player_name, team_name=canon_team)
                 db.add(existing)
 
+            existing.team_name = canon_team
             existing.position = p.position
             existing.club = p.club
             existing.age = p.age
@@ -245,6 +347,7 @@ def _upsert_players(players: list[FifaSquadPlayer], source_version: str) -> int:
             existing.fitness_score = 1.0
             upserted += 1
 
+        _dedupe_players(db, affected_teams)
         db.commit()
     except Exception:
         db.rollback()
@@ -271,13 +374,21 @@ def _upsert_coaches(coaches: list[dict[str, Any]], source_version: str) -> int:
 
             team = team_by_name.get(canon_team)
             existing = db.scalar(
-                select(Coach).where(Coach.team_name == canon_team)
+                select(Coach)
+                .where(
+                    Coach.team_name.in_(_team_name_variants(canon_team)),
+                    Coach.data_source != PLACEHOLDER_SOURCE,
+                )
+                .limit(1)
             )
+            _delete_placeholder_coach(db, canon_team)
+            db.flush()
             if existing is None:
                 existing = Coach(name=c["name"], team_name=canon_team)
                 db.add(existing)
 
             existing.name = c["name"]
+            existing.team_name = canon_team
             existing.team_id = team.id if team else None
             existing.first_names = c.get("first_names") or None
             existing.last_names = c.get("last_names") or None
@@ -295,6 +406,72 @@ def _upsert_coaches(coaches: list[dict[str, Any]], source_version: str) -> int:
     finally:
         db.close()
     return upserted
+
+
+def _team_name_variants(team_name: str) -> list[str]:
+    canon = canonical(team_name)
+    variants = {team_name, canon, canon.replace(" and ", " And ")}
+    if canon == "Bosnia and Herzegovina":
+        variants.update({
+            "Bosnia And Herzegovina",
+            "Bosnia & Herzegovina",
+            "Bosnia-Herzegovina",
+            "BIH",
+        })
+    return sorted(variants)
+
+
+def _delete_placeholder_players(db, team_name: str) -> None:
+    for row in db.scalars(
+        select(Player).where(
+            Player.team_name == canonical(team_name),
+            Player.data_source == PLACEHOLDER_SOURCE,
+        )
+    ).all():
+        db.delete(row)
+
+
+def _delete_placeholder_coach(db, team_name: str) -> None:
+    row = db.scalar(
+        select(Coach)
+        .where(
+            Coach.team_name == canonical(team_name),
+            Coach.data_source == PLACEHOLDER_SOURCE,
+        )
+        .limit(1)
+    )
+    if row:
+        db.delete(row)
+
+
+def _dedupe_players(db, team_names: set[str]) -> None:
+    for team_name in team_names:
+        rows = db.scalars(
+            select(Player).where(Player.team_name.in_(_team_name_variants(team_name)))
+        ).all()
+        grouped: dict[str, list[Player]] = {}
+        for row in rows:
+            grouped.setdefault(_normalised_player_key(row.name), []).append(row)
+        for duplicates in grouped.values():
+            if len(duplicates) <= 1:
+                continue
+            keep = sorted(
+                duplicates,
+                key=lambda row: (
+                    0 if row.data_source == SOURCE_NAME else 1,
+                    0 if row.height_cm is not None else 1,
+                    0 if row.date_of_birth else 1,
+                    row.id,
+                ),
+            )[0]
+            keep.team_name = canonical(keep.team_name)
+            for row in duplicates:
+                if row.id != keep.id:
+                    db.delete(row)
+
+
+def _normalised_player_key(name: str | None) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip().lower())
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { DataFreshnessStrip } from "@/components/data-freshness";
 import { AskAnalystBox } from "@/components/AskAnalystBox";
+import { ShieldAlert } from "lucide-react";
 
 // ── Stat box ──────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ function SquadBrief({
   if (!players.length) {
     return (
       <p className="text-muted text-sm text-center py-6">
-        No squad data is loaded for this team yet. Run the squad ingestion ETL to populate players.
+        Squad data incomplete — check ingestion status.
       </p>
     );
   }
@@ -150,6 +151,7 @@ function SquadBrief({
           <th className="py-2 text-right font-normal hidden sm:table-cell">Ht</th>
           <th className="py-2 text-right font-normal">Caps</th>
           <th className="py-2 text-right font-normal">G</th>
+          <th className="py-2 text-right font-normal hidden sm:table-cell">A</th>
           <th className="py-2 text-right font-normal">Status</th>
           <th className="py-2 text-right font-normal hidden md:table-cell">Profile</th>
         </tr>
@@ -170,6 +172,7 @@ function SquadBrief({
               </td>
               <td className="py-1.5 text-right tnum text-muted">{p.international_caps ?? 0}</td>
               <td className="py-1.5 text-right tnum text-muted">{p.international_goals ?? p.goals ?? 0}</td>
+              <td className="py-1.5 text-right tnum text-muted hidden sm:table-cell">{p.assists ?? 0}</td>
               <td className="py-1.5 text-right">
                 {isPlaceholder ? (
                   <span className="text-xs text-muted">Pending</span>
@@ -210,7 +213,7 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
   const { data: team, isLoading, isError } = useTeam(teamId);
   const { data: history } = useEloHistory(teamId);
   const { data: wc2026Detail } = useWC2026TeamDetail(team?.name ?? "", !!team?.name);
-  const { data: squadData, isError: squadError } = useTeamSquad(teamId, !!team);
+  const { data: squadData, isLoading: squadLoading, isError: squadError } = useTeamSquad(teamId, !!team);
 
   if (isError) {
     return (
@@ -348,12 +351,27 @@ export default function TeamPage({ params }: { params: Promise<{ id: string }> }
           )}
         </CardHeader>
         <CardBody>
-          {squadError ? (
+          {squadLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : squadError ? (
             <p className="text-signal text-sm text-center py-6">
               Squad data could not be loaded for this team.
             </p>
           ) : (
-            <SquadBrief players={squadData?.squad ?? []} teamName={team.name} />
+            <>
+              {(squadData?.squad_count ?? squadData?.squad.length ?? 0) > 0
+                && (squadData?.squad_count ?? squadData?.squad.length ?? 0) < 20 && (
+                <div className="mb-3 flex items-start gap-2 rounded-md border border-[hsl(45_95%_58%/0.5)] bg-[hsl(45_95%_58%/0.07)] px-3 py-2 text-[11px] text-[hsl(45_95%_58%)]">
+                  <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <p>Squad data incomplete — check ingestion status.</p>
+                </div>
+              )}
+              <SquadBrief players={squadData?.squad ?? []} teamName={team.name} />
+            </>
           )}
         </CardBody>
       </Card>

@@ -12,6 +12,7 @@ from app.models.team import Team
 from app.repositories.repos import TeamRepository
 from app.schemas.domain import EloPoint, PlayerOut, TeamOut, TeamSquadOut
 from ml.features import _get_player_strength_stats
+from etl.transform.normalize import canonical
 
 router = APIRouter(prefix="/teams", tags=["teams"])
 
@@ -24,12 +25,16 @@ def _team_metadata(db: DbSession) -> dict[str, dict]:
             select(QualifiedTeam).where(QualifiedTeam.tournament_year == 2026)
         ).all()
     }
-    coaches = dict(db.execute(select(Coach.team_name, Coach.name)).all())
-    counts = dict(
-        db.execute(
-            select(Player.team_name, func.count(Player.id)).group_by(Player.team_name)
-        ).all()
-    )
+    coaches = {
+        canonical(team_name): name
+        for team_name, name in db.execute(select(Coach.team_name, Coach.name)).all()
+    }
+    counts: dict[str, int] = {}
+    for team_name, count in db.execute(
+        select(Player.team_name, func.count(Player.id)).group_by(Player.team_name)
+    ).all():
+        canon = canonical(team_name)
+        counts[canon] = counts.get(canon, 0) + int(count or 0)
     return {
         "groups": groups,
         "coaches": coaches,
@@ -188,14 +193,46 @@ def _team_player_rows(
     team = TeamRepository(db).get(team_id)
     if not team:
         raise HTTPException(404, "Team not found")
+    team_names = _team_name_variants(team.name)
     stmt = (
         select(Player)
-        .where(Player.team_name == team.name)
+        .where(Player.team_name.in_(team_names))
         .order_by(Player.position, Player.name)
     )
     if position:
-        stmt = stmt.where(Player.position == position.upper())
+        stmt = stmt.where(Player.position.in_(_position_variants(position)))
     return [_player_to_payload(player, team.id) for player in db.scalars(stmt).all()]
+
+
+def _team_name_variants(team_name: str) -> list[str]:
+    canon = canonical(team_name)
+    variants = {
+        team_name,
+        canon,
+        canon.replace(" and ", " And "),
+    }
+    if canon == "Bosnia and Herzegovina":
+        variants.update({
+            "Bosnia And Herzegovina",
+            "Bosnia & Herzegovina",
+            "Bosnia-Herzegovina",
+            "BIH",
+        })
+    return sorted(variants)
+
+
+def _position_variants(position: str) -> list[str]:
+    text = position.upper()
+    aliases = {
+        "DF": ["DF", "DEF"],
+        "DEF": ["DF", "DEF"],
+        "MF": ["MF", "MID"],
+        "MID": ["MF", "MID"],
+        "FW": ["FW", "FWD"],
+        "FWD": ["FW", "FWD"],
+        "GK": ["GK"],
+    }
+    return aliases.get(text, [text])
 
 
 @router.get("/{team_id}/squad-strength")
