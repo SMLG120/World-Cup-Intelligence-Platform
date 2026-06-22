@@ -60,4 +60,7 @@ Tracks the Next.js frontend build. ✅ done · 🔲 follows established pattern.
 - Required production env vars: `NEXT_PUBLIC_API_BASE_URL`,
   `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_ENABLE_ML`,
   `NEXT_PUBLIC_ENABLE_SCENARIOS`, and `NEXT_PUBLIC_ENABLE_EXPLAINABILITY`.
+- `NEXT_PUBLIC_API_BASE_URL` must be the deployed FastAPI origin. The Data
+  Freshness card calls `/api/v1/data/freshness` from that origin and will report
+  a configuration error if production falls back to the local proxy.
 - Verified command set: `npm install`, `npm run typecheck`, `npm run build`.

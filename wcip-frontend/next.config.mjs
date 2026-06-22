@@ -12,7 +12,9 @@ const nextConfig = {
   },
   async rewrites() {
     // Proxy /backend/* to the FastAPI service so the browser avoids CORS in dev.
-    const base = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
+    const base = process.env.BACKEND_INTERNAL_URL
+      || (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
+    if (!base) return [];
     return [{ source: "/backend/:path*", destination: `${base}/:path*` }];
   },
 };

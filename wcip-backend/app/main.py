@@ -103,6 +103,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origin_regex=settings.BACKEND_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -189,10 +190,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/", tags=["system"])
+def root():
+    return {
+        "status": "ok",
+        "service": settings.PROJECT_NAME,
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
 @app.get("/health", tags=["system"])
 def health():
-    return {"status": "ok", "environment": settings.ENVIRONMENT,
-            "cache": cache.kind}
+    return {"status": "ok"}
 
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)

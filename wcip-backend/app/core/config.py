@@ -65,8 +65,16 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     BACKEND_CORS_ORIGINS: Annotated[List[str], NoDecode] = Field(
-        default_factory=lambda: ["http://localhost:3000"],
-        validation_alias=AliasChoices("CORS_ORIGINS", "BACKEND_CORS_ORIGINS"),
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://world-cup-intelligence-platform.vercel.app",
+        ],
+        validation_alias=AliasChoices("ALLOWED_ORIGINS", "CORS_ORIGINS", "BACKEND_CORS_ORIGINS"),
+    )
+    BACKEND_CORS_ORIGIN_REGEX: str = Field(
+        default=r"https://world-cup-intelligence-platform(?:-[a-z0-9-]+)?\.vercel\.app",
+        validation_alias=AliasChoices("CORS_ORIGIN_REGEX", "BACKEND_CORS_ORIGIN_REGEX"),
     )
 
     # --- rate limiting ---
@@ -125,6 +133,7 @@ class Settings(BaseSettings):
             "dev-insecure-change-me",
             "dev-insecure-change-me-in-production-0123456789abcdef",
             "replace-with-generated-local-secret",
+            "replace-with-generated-local-jwt-secret",
             "replace-with-generated-local-refresh-secret",
         }
         if env == "production":

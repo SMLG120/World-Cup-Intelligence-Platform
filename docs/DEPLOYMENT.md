@@ -55,6 +55,68 @@ FastAPI backend separately, for example on:
 The Vercel frontend calls the deployed backend through
 `NEXT_PUBLIC_API_BASE_URL`.
 
+### Render Backend Settings
+
+Use these Render settings for the FastAPI backend:
+
+```text
+Service Type: Web Service
+Runtime: Python
+Root Directory: wcip-backend
+Build Command: pip install -r requirements.txt
+Start Command: bash scripts/start_render.sh
+```
+
+The backend app path is:
+
+```text
+app.main:app
+```
+
+`bash scripts/start_render.sh` runs Alembic migrations and then starts:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Required Render environment variables:
+
+```env
+DATABASE_URL=Render PostgreSQL Internal Database URL
+SECRET_KEY=generated secret
+JWT_SECRET_KEY=generated jwt secret
+JWT_REFRESH_SECRET_KEY=generated refresh jwt secret
+ALLOWED_ORIGINS=https://world-cup-intelligence-platform.vercel.app,http://localhost:3000
+ENVIRONMENT=production
+APP_ENV=production
+DEBUG=false
+```
+
+Generate each secret locally with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+```
+
+`DATABASE_URL` comes from Render PostgreSQL. Create a Render PostgreSQL
+database, copy its Internal Database URL, and set it only on the Render backend
+service. Do not put backend secrets or database URLs in Vercel.
+
+After Render gives you a backend URL, set this in Vercel and redeploy:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://YOUR_RENDER_BACKEND_URL
+```
+
+Verify:
+
+```text
+https://YOUR_RENDER_BACKEND_URL/
+https://YOUR_RENDER_BACKEND_URL/health
+https://YOUR_RENDER_BACKEND_URL/docs
+https://YOUR_RENDER_BACKEND_URL/api/v1/data/freshness
+```
+
 ## Local Build Verification
 
 ```bash

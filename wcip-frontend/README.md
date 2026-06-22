@@ -86,6 +86,13 @@ Do not use `localhost` for `NEXT_PUBLIC_API_BASE_URL` in production. Deploy the
 FastAPI backend separately, then point the frontend at that backend URL. Also
 add the Vercel domain to the backend's CORS allow-list.
 
+The Data Freshness card calls
+`<NEXT_PUBLIC_API_BASE_URL>/api/v1/data/freshness`. If production shows
+`Backend not configured` or `Freshness unavailable`, verify that
+`NEXT_PUBLIC_API_BASE_URL` exists in Vercel Production, points to the deployed
+FastAPI origin rather than this Vercel frontend URL, and that the backend CORS
+settings allow `https://world-cup-intelligence-platform.vercel.app`.
+
 If Vercel reports `Couldn't find any pages or app directory`, it is building
 from the repository root instead of this folder. Set the Vercel Root Directory
 to `wcip-frontend`; do not create a fake app directory at the repo root.

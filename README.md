@@ -669,6 +669,21 @@ NEXT_PUBLIC_ENABLE_EXPLAINABILITY=true
 The frontend build must not start or deploy the FastAPI backend. Deploy the
 backend separately on Render, Railway, Fly.io, AWS, or another Python/Docker
 host, then point `NEXT_PUBLIC_API_BASE_URL` at that deployed backend.
+Do not point `NEXT_PUBLIC_API_BASE_URL` at the Vercel frontend URL.
+
+The homepage Data Freshness card reads:
+
+```text
+GET <NEXT_PUBLIC_API_BASE_URL>/api/v1/data/freshness
+```
+
+If the deployed card says `Backend not configured` or `Freshness unavailable`,
+check Vercel's Production environment for `NEXT_PUBLIC_API_BASE_URL`, redeploy
+the frontend after changing it, and confirm the backend allows
+`https://world-cup-intelligence-platform.vercel.app` through CORS. A response
+from `/backend/api/v1/data/freshness` with `DNS_HOSTNAME_RESOLVED_PRIVATE`
+means Vercel is still using the local proxy fallback instead of the deployed
+FastAPI backend.
 
 If Vercel says:
 
@@ -1027,14 +1042,23 @@ paths.
 
 ## Deployment Notes
 
-- Set strong production `JWT_SECRET_KEY` and `JWT_REFRESH_SECRET_KEY` values
-  through Render, Vercel, or your secret manager.
+- Deploy the backend as a separate Render Python web service from
+  `wcip-backend`.
+- Render backend build command: `pip install -r requirements.txt`.
+- Render backend start command: `bash scripts/start_render.sh`.
+- The FastAPI app path is `app.main:app`; the direct Uvicorn command is
+  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- `DATABASE_URL` comes from the Render PostgreSQL Internal Database URL.
+- Generate strong production `SECRET_KEY`, `JWT_SECRET_KEY`, and
+  `JWT_REFRESH_SECRET_KEY` values with
+  `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
 - Do not reuse local development secrets in production.
 - Never commit production `.env` files.
 - Use Postgres for production `DATABASE_URL`.
 - Use Redis for cache and Celery broker/result backend.
-- Set `CORS_ORIGINS` or `BACKEND_CORS_ORIGINS` to the deployed frontend origin.
-- Set `NEXT_PUBLIC_API_BASE_URL` to the deployed backend origin.
+- Set `ALLOWED_ORIGINS`, `CORS_ORIGINS`, or `BACKEND_CORS_ORIGINS` to the
+  deployed frontend origin.
+- Set Vercel `NEXT_PUBLIC_API_BASE_URL` to the deployed Render backend origin.
 - In Vercel, set the frontend Root Directory to `wcip-frontend`; the repository
   root is not the Next.js app.
 - Run Alembic migrations before serving production traffic.

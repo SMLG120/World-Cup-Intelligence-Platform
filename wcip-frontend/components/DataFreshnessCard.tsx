@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, CheckCircle2, Database, RefreshCw } from "lucide-react";
+import { ApiError, getApiBaseUrl, getApiConfigIssue } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import {
   useAdminRetrainIfNeeded,
@@ -33,17 +34,54 @@ function formatDateOnly(value?: string | null) {
   return parsed.toISOString().slice(0, 10);
 }
 
-function sourceState(status?: string) {
-  if (!status || status === "not_loaded") {
+function freshnessState({
+  isLoading,
+  isError,
+  data,
+  configIssue,
+}: {
+  isLoading: boolean;
+  isError: boolean;
+  data: ReturnType<typeof useDataFreshness>["data"];
+  configIssue: ReturnType<typeof getApiConfigIssue>;
+}) {
+  if (isLoading) {
+    return { label: "Checking sources", tone: "text-muted" };
+  }
+  if (configIssue) {
+    return { label: "Backend not configured", tone: "text-signal" };
+  }
+  if (isError) {
+    return { label: "Backend unreachable", tone: "text-signal" };
+  }
+  if (!data) {
     return { label: "Data source unavailable", tone: "text-signal" };
   }
-  if (status === "failed") {
-    return { label: "Using latest cached snapshot", tone: "text-[hsl(45_95%_58%)]" };
-  }
-  if (status === "started") {
-    return { label: "Updating data...", tone: "text-[hsl(45_95%_58%)]" };
+  const missingCore = [
+    data.last_elo_update,
+    data.last_fifa_ranking_update,
+    data.last_player_data_update,
+    data.model_trained_at,
+  ].filter((value) => !value).length;
+  const statuses = Object.values(data.source_status ?? {});
+  if (missingCore > 0 || statuses.some((status) => status === "not_loaded" || status === "failed")) {
+    return { label: "Partial snapshot", tone: "text-[hsl(45_95%_58%)]" };
   }
   return { label: "Predictions refreshed", tone: "text-pitch" };
+}
+
+function errorDetail(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 0 && error.detail && typeof error.detail === "object" && "detail" in error.detail) {
+      return String((error.detail as { detail: unknown }).detail);
+    }
+    if (error.status === 0) {
+      return error.message;
+    }
+    return `${error.message} (${error.status})`;
+  }
+  if (error instanceof Error) return error.message;
+  return "The backend freshness endpoint could not be reached.";
 }
 
 function FreshnessRow({
@@ -75,7 +113,13 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
   const retrain = useMLRetrain();
 
   const data = freshness.data;
-  const state = sourceState(data?.source_status?.elo === "failed" ? "failed" : data?.source_status?.fifa);
+  const configIssue = getApiConfigIssue();
+  const state = freshnessState({
+    isLoading: freshness.isLoading,
+    isError: freshness.isError,
+    data,
+    configIssue,
+  });
   const isAdmin = user?.role === "admin";
   const adminPending = refresh.isPending || refreshElo.isPending || refreshFifa.isPending
     || refreshPlayers.isPending || retrainCheck.isPending || retrain.isPending;
@@ -120,6 +164,11 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
           value: formatUtc(data.data_snapshot_timestamp),
           detail: data.data_snapshot_version,
         },
+        {
+          label: "Source status",
+          value: data.using_latest_cached_snapshot ? "Snapshot available" : "Snapshot missing",
+          detail: `Elo ${data.source_status?.elo ?? "unknown"} · FIFA ${data.source_status?.fifa ?? "unknown"} · Players ${data.source_status?.players ?? "unknown"}`,
+        },
       ]
     : [];
   const visibleRows = compact ? rows.slice(0, 3) : rows;
@@ -136,10 +185,13 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
         {freshness.isLoading ? (
           <span className="text-xs text-muted">Loading snapshot status...</span>
         ) : freshness.isError ? (
-          <span className="inline-flex items-center gap-1 text-xs text-signal">
-            <AlertCircle className="h-3.5 w-3.5" aria-hidden />
-            Freshness unavailable
-          </span>
+          <div className="min-w-0 text-xs text-signal sm:ml-auto">
+            <span className="inline-flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5" aria-hidden />
+              Freshness unavailable
+            </span>
+            <p className="mt-1 max-w-md truncate">{errorDetail(freshness.error)}</p>
+          </div>
         ) : data?.using_latest_cached_snapshot ? (
           <span className="inline-flex items-center gap-1 text-xs text-pitch sm:ml-auto">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
@@ -171,6 +223,22 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
           {visibleRows.map((row) => (
             <FreshnessRow key={row.label} {...row} />
           ))}
+        </div>
+      )}
+
+      {!compact && configIssue && (
+        <div className="mt-3 rounded-md border border-signal/30 bg-signal/8 px-3 py-2 text-xs text-signal">
+          <p className="font-medium">{configIssue.message}</p>
+          <p className="mt-1">{configIssue.detail}</p>
+        </div>
+      )}
+
+      {!compact && !configIssue && freshness.isError && (
+        <div className="mt-3 rounded-md border border-signal/30 bg-signal/8 px-3 py-2 text-xs text-signal">
+          <p className="font-medium">Could not reach `/api/v1/data/freshness`.</p>
+          <p className="mt-1">
+            API base: <span className="font-mono">{getApiBaseUrl()}</span>
+          </p>
         </div>
       )}
 

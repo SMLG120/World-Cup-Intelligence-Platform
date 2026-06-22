@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./api";
+import { ApiError, api } from "./api";
 import type { PredictionMode, Team } from "./types";
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
@@ -132,7 +132,10 @@ export function useDataFreshness() {
     queryKey: ["data-freshness"],
     queryFn: () => api.dataFreshness(),
     staleTime: 60 * 1000,
-    retry: 1,
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 0) return false;
+      return failureCount < 1;
+    },
   });
 }
 

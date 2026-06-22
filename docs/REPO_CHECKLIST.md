@@ -305,10 +305,12 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 ## Infrastructure
 
 - ✅ Dockerfile + docker-compose.yml (api + worker + beat + postgres + redis)
-- ✅ render.yaml — Render deployment blueprint
+- ✅ render.yaml — Render Python deployment blueprint
+- ✅ `wcip-backend/scripts/start_render.sh` — Alembic + Uvicorn Render start command
+- ✅ `RENDER_BACKEND_DEPLOYMENT_AUDIT.md` — FastAPI backend Render checklist
 - ✅ `vercel.json` — root-level defensive Vercel config delegates builds to `wcip-frontend`
 - ✅ `wcip-frontend/vercel.json` — Next.js Vercel config for the correct frontend project root
-- ✅ `DEPLOYMENT.md` — Vercel frontend / separate FastAPI backend deployment guide
+- ✅ `VERCEL_DATA_FRESHNESS_AUDIT.md` — deployed freshness diagnosis and env/CORS checklist
 - ✅ alembic/ — database migrations
 - ✅ `.env.example` with all required config keys documented
 - ✅ `wcip-backend/.env.example` — backend placeholder-only local template

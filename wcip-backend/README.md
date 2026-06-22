@@ -111,9 +111,19 @@ in production.
 
 ## Deployment
 
-- **Render**: `render.yaml` blueprint provisions web + worker + Postgres + Redis,
-  runs `alembic upgrade head` pre-deploy. Set `BACKEND_CORS_ORIGINS` to your
-  Vercel domain.
+- **Render Python web service**:
+  - Root Directory: `wcip-backend`
+  - Build Command: `pip install -r requirements.txt`
+  - Start Command: `bash scripts/start_render.sh`
+  - Direct app path: `app.main:app`
+  - Direct command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+  - Required env: `DATABASE_URL`, `SECRET_KEY`, `JWT_SECRET_KEY`,
+    `JWT_REFRESH_SECRET_KEY`, `ALLOWED_ORIGINS`, `ENVIRONMENT=production`
+  - `DATABASE_URL` comes from Render PostgreSQL's Internal Database URL.
+  - Generate secrets with
+    `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
+  - Set `ALLOWED_ORIGINS` to
+    `https://world-cup-intelligence-platform.vercel.app,http://localhost:3000`.
 - **Any Docker host**: `docker compose up` or build the image and run the
   `uvicorn` and `celery worker` commands against managed Postgres/Redis.
 

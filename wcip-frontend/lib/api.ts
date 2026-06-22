@@ -11,10 +11,24 @@ import type {
   PredictionMode, RagAnswer, RagAskRequest, RagIndexStatus, RagDocumentSummary,
 } from "./types";
 
+export interface ApiConfigIssue {
+  code: "api_base_missing" | "api_base_localhost" | "api_base_frontend_origin" | "api_base_insecure";
+  message: string;
+  detail: string;
+}
+
+function rawApiBase() {
+  return {
+    publicBase: process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "",
+    legacyBase: process.env.NEXT_PUBLIC_API_BASE?.trim() || "",
+  };
+}
+
 function resolveApiBase() {
+  const { publicBase, legacyBase } = rawApiBase();
   const raw =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_BASE ||
+    publicBase ||
+    legacyBase ||
     "/backend/api/v1";
   const trimmed = raw.replace(/\/+$/, "");
   if (trimmed.endsWith("/api/v1") || trimmed.endsWith("/backend/api/v1")) {
@@ -27,6 +41,59 @@ function resolveApiBase() {
 }
 
 const BASE = resolveApiBase();
+
+export function getApiBaseUrl() {
+  return BASE;
+}
+
+export function getApiConfigIssue(): ApiConfigIssue | null {
+  const { publicBase } = rawApiBase();
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction && !publicBase) {
+    return {
+      code: "api_base_missing",
+      message: "Backend URL is not configured.",
+      detail: "Set NEXT_PUBLIC_API_BASE_URL in Vercel to the deployed FastAPI backend URL, then redeploy.",
+    };
+  }
+
+  if (isProduction && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(publicBase)) {
+    return {
+      code: "api_base_localhost",
+      message: "Production backend URL points to localhost.",
+      detail: "NEXT_PUBLIC_API_BASE_URL must point to the deployed FastAPI backend, not localhost.",
+    };
+  }
+
+  if (
+    isProduction
+    && typeof window !== "undefined"
+    && publicBase
+    && publicBase.replace(/\/+$/, "") === window.location.origin
+  ) {
+    return {
+      code: "api_base_frontend_origin",
+      message: "Backend URL points to the frontend deployment.",
+      detail: "NEXT_PUBLIC_API_BASE_URL must be the FastAPI backend URL, not the Vercel frontend URL.",
+    };
+  }
+
+  if (
+    isProduction
+    && typeof window !== "undefined"
+    && window.location.protocol === "https:"
+    && publicBase.startsWith("http://")
+  ) {
+    return {
+      code: "api_base_insecure",
+      message: "Backend URL uses insecure HTTP.",
+      detail: "Use an HTTPS backend URL to avoid browser mixed-content blocking.",
+    };
+  }
+
+  return null;
+}
 
 const ACCESS_KEY = "wcip_access";
 const REFRESH_KEY = "wcip_refresh";
@@ -70,6 +137,11 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const configIssue = getApiConfigIssue();
+  if (configIssue) {
+    throw new ApiError(0, configIssue.message, configIssue.code, null, configIssue);
+  }
+
   const { method = "GET", body, auth = false, form = false, retry = true } = opts;
   const headers: Record<string, string> = {};
   let payload: BodyInit | undefined;
