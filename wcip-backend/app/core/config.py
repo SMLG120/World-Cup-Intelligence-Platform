@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     # Default to SQLite so local dev / CI runs with no Postgres.
     DATABASE_URL: str = "sqlite:///./wcip.db"
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _normalize_database_url(cls, v):
+        # Some Postgres providers (Render included) hand out `postgres://`
+        # connection strings; SQLAlchemy 1.4+ only recognizes `postgresql://`.
+        if isinstance(v, str) and v.startswith("postgres://"):
+            return "postgresql://" + v[len("postgres://"):]
+        return v
+
     # --- redis / celery ---
     REDIS_URL: str = "redis://localhost:6379/0"
     CACHE_TTL_SECONDS: int = 300

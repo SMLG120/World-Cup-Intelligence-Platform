@@ -83,7 +83,7 @@ function ChampionProbabilityChart({ rows }: { rows: WorldCupWinnerPrediction[] }
     <ResponsiveContainer width="100%" height={Math.max(260, data.length * 34)}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 32, top: 4, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" horizontal={false} />
-        <XAxis type="number" tickFormatter={(v) => formatProbability(Number(v))} stroke="hsl(var(--muted))" fontSize={11} />
+        <XAxis type="number" tickFormatter={(v: number) => formatProbability(Number(v))} stroke="hsl(var(--muted))" fontSize={11} />
         <YAxis
           type="category"
           dataKey="team_name"
@@ -123,7 +123,7 @@ function ModelComparisonChart({ rows }: { rows: WorldCupWinnerPrediction[] }) {
           fontSize={11}
           tick={{ fill: "hsl(var(--muted))" }}
         />
-        <YAxis tickFormatter={(v) => formatProbability(Number(v))} stroke="hsl(var(--muted))" fontSize={11} />
+        <YAxis tickFormatter={(v: number) => formatProbability(Number(v))} stroke="hsl(var(--muted))" fontSize={11} />
         <Tooltip
           formatter={(v: number, name: string) => [
             formatProbability(v),
@@ -164,7 +164,7 @@ function ConfederationBreakdown({ rows }: { rows: WorldCupWinnerPrediction[] }) 
       <BarChart data={grouped} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
         <XAxis dataKey="confederation" stroke="hsl(var(--muted))" fontSize={11} />
-        <YAxis tickFormatter={(v) => formatProbability(Number(v))} stroke="hsl(var(--muted))" fontSize={11} />
+        <YAxis tickFormatter={(v: number) => formatProbability(Number(v))} stroke="hsl(var(--muted))" fontSize={11} />
         <Tooltip
           formatter={(v: number) => [formatProbability(v), "Champion Share"]}
           contentStyle={{

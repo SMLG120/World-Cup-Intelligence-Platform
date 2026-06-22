@@ -54,6 +54,8 @@ export interface LatestEloSnapshot {
 }
 
 export interface DataFreshness {
+  status?: "available" | "partial" | string;
+  message?: string | null;
   generated_at: string;
   data_snapshot_timestamp: string | null;
   last_elo_update: string | null;

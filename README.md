@@ -637,9 +637,67 @@ npm run dev
 
 The frontend dev server runs at `http://localhost:3000`.
 Frontend public variables are documented in
-`wcip-frontend/.env.local.example`. The API client accepts both
-`NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` and the older
-`NEXT_PUBLIC_API_BASE=/backend/api/v1` proxy form.
+`wcip-frontend/.env.local.example`. For local development, use one clean API
+base: `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`. The API client appends
+`/api/v1`, so do not include `/api/v1` in the env value.
+
+### Local Codespace Setup
+
+Start the backend first:
+
+```bash
+cd wcip-backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+If this environment does not provide a plain `python` command, use the venv
+interpreter directly:
+
+```bash
+./.venv/bin/python -m alembic upgrade head
+./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Then start the frontend in another terminal:
+
+```bash
+cd wcip-frontend
+npm install
+npm run dev
+```
+
+Local frontend API base:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+The API client appends `/api/v1`, so the local freshness request is:
+
+```text
+http://localhost:8000/api/v1/data/freshness
+```
+
+Do not set local `NEXT_PUBLIC_API_BASE_URL` to
+`http://localhost:8000/api/v1`.
+
+In GitHub Codespaces, forward ports `8000` and `3000`. If the browser cannot
+call `http://localhost:8000`, copy the forwarded backend URL for port `8000`
+from the Ports tab, set it as `NEXT_PUBLIC_API_BASE_URL` in
+`wcip-frontend/.env.local`, and restart `npm run dev`.
+
+Check:
+
+```text
+http://localhost:8000/health
+http://localhost:8000/docs
+http://localhost:8000/api/v1/data/freshness
+http://localhost:3000
+```
 
 ### Frontend Deployment On Vercel
 
@@ -1045,10 +1103,17 @@ paths.
 - Deploy the backend as a separate Render Python web service from
   `wcip-backend`.
 - Render backend build command: `pip install -r requirements.txt`.
-- Render backend start command: `bash scripts/start_render.sh`.
-- The FastAPI app path is `app.main:app`; the direct Uvicorn command is
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- Render backend start command: `bash scripts/start_render.sh` (runs
+  `alembic upgrade head` before starting Uvicorn — do not start with a bare
+  `uvicorn ...` command or migrations are silently skipped).
+- The FastAPI app path is `app.main:app`.
+- If deploying `render.yaml` as a Blueprint, each service must set
+  `rootDir: wcip-backend` since the blueprint file lives in that
+  subdirectory, not the repo root — otherwise build/start commands run from
+  the repo root and fail (`requirements.txt` not found there).
 - `DATABASE_URL` comes from the Render PostgreSQL Internal Database URL.
+  Either `postgres://` or `postgresql://` scheme works — `app/core/config.py`
+  normalizes `postgres://` to `postgresql://` automatically.
 - Generate strong production `SECRET_KEY`, `JWT_SECRET_KEY`, and
   `JWT_REFRESH_SECRET_KEY` values with
   `python -c "import secrets; print(secrets.token_urlsafe(64))"`.

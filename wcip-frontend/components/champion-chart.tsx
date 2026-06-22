@@ -26,7 +26,7 @@ export function ChampionChart({ teams, limit = 10 }: Props) {
     <ResponsiveContainer width="100%" height={Math.max(240, data.length * 34)}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
         <XAxis
-          type="number" tickFormatter={(v) => `${v}%`}
+          type="number" tickFormatter={(v: number) => `${v}%`}
           stroke="hsl(var(--muted))" fontSize={11}
           tick={{ fill: "hsl(var(--muted))" }}
         />

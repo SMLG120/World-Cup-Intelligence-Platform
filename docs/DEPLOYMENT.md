@@ -10,6 +10,49 @@ repo-root/
 
 The frontend and backend deploy separately.
 
+## Local Codespace Setup
+
+Before Render/Vercel deployment, verify the local chain:
+
+```text
+local frontend -> local FastAPI backend -> local SQLite database
+```
+
+Backend:
+
+```bash
+cd wcip-backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Frontend:
+
+```bash
+cd wcip-frontend
+npm install
+npm run dev
+```
+
+Local frontend env:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+Production frontend env:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-render-backend.onrender.com
+```
+
+In Codespaces, forward ports `8000` and `3000`. If the browser cannot reach
+`localhost:8000`, use the forwarded 8000 URL as `NEXT_PUBLIC_API_BASE_URL` and
+restart the frontend dev server.
+
 ## Frontend: Vercel
 
 The real Next.js app root is `wcip-frontend/`. It contains:
@@ -65,6 +108,7 @@ Runtime: Python
 Root Directory: wcip-backend
 Build Command: pip install -r requirements.txt
 Start Command: bash scripts/start_render.sh
+Health Check Path: /health
 ```
 
 The backend app path is:
@@ -73,11 +117,14 @@ The backend app path is:
 app.main:app
 ```
 
-`bash scripts/start_render.sh` runs Alembic migrations and then starts:
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+`scripts/start_render.sh` runs `alembic upgrade head` and then starts
+Uvicorn. **Always use this script as the Start Command, not a bare
+`uvicorn` command** — skipping it means new Postgres databases never get
+their Alembic migrations applied. If using `render.yaml` as a Blueprint, both
+services must set `rootDir: wcip-backend` since the blueprint file lives
+inside that subdirectory, not at the repo root — without it, Render runs
+`pip install -r requirements.txt` from the repo root, where `requirements.txt`
+doesn't exist, and the build fails.
 
 Required Render environment variables:
 
@@ -91,6 +138,10 @@ ENVIRONMENT=production
 APP_ENV=production
 DEBUG=false
 ```
+
+`DATABASE_URL` may arrive as `postgres://...` from some providers;
+`app/core/config.py` normalizes that to `postgresql://...` automatically, so
+either scheme works.
 
 Generate each secret locally with:
 

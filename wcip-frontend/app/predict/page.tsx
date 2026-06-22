@@ -205,7 +205,7 @@ function ModelComparisonChart({
       <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
         <XAxis dataKey="model" stroke="hsl(var(--muted))" fontSize={10} tick={{ fill: "hsl(var(--muted))" }} />
-        <YAxis tickFormatter={(v) => `${v}%`} stroke="hsl(var(--muted))" fontSize={10} domain={[0, 100]} />
+        <YAxis tickFormatter={(v: number) => `${v}%`} stroke="hsl(var(--muted))" fontSize={10} domain={[0, 100]} />
         <Tooltip
           formatter={(v: number, name: string) => [
             `${v.toFixed(1)}%`,
