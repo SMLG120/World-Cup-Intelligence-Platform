@@ -263,7 +263,7 @@ function DeltaChart({
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" horizontal={false} />
         <XAxis
           type="number"
-          tickFormatter={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
+          tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`}
           stroke="hsl(var(--muted))" fontSize={10}
         />
         <YAxis
@@ -313,7 +313,7 @@ function MultiScenarioChart({
       <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
         <XAxis dataKey="team" stroke="hsl(var(--muted))" fontSize={10} tick={{ fill: "hsl(var(--muted))" }} />
-        <YAxis tickFormatter={(v) => `${v}%`} stroke="hsl(var(--muted))" fontSize={10} />
+        <YAxis tickFormatter={(v: number) => `${v}%`} stroke="hsl(var(--muted))" fontSize={10} />
         <Tooltip
           formatter={(v: number) => [`${v.toFixed(1)}%`]}
           contentStyle={{

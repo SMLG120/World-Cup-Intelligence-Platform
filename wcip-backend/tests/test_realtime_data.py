@@ -100,6 +100,7 @@ def test_data_freshness_endpoint(client):
     response = client.get("/api/v1/data/freshness")
     assert response.status_code == 200
     payload = response.json()
+    assert payload["status"] in {"available", "partial"}
     assert "data_snapshot_version" in payload
     assert "source_status" in payload
     for key in (
@@ -127,6 +128,8 @@ def test_data_freshness_handles_empty_database(client):
             tx.rollback()
 
     assert payload["data_snapshot_version"].startswith("elo:none|fifa:none")
+    assert payload["status"] == "partial"
+    assert payload["message"] == "Freshness data is unavailable because local database is not seeded."
     assert payload["data_snapshot_timestamp"] is None
     assert payload["using_latest_cached_snapshot"] is False
     assert payload["source_status"] == {
@@ -158,6 +161,8 @@ def test_data_freshness_handles_partial_database(client):
             tx.rollback()
 
     assert payload["elo_data_version"] == "elo-partial-test"
+    assert payload["status"] == "partial"
+    assert "missing:" in payload["message"]
     assert payload["fifa_data_version"] is None
     assert payload["last_player_data_update"] is None
     assert payload["using_latest_cached_snapshot"] is True

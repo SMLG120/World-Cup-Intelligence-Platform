@@ -5,7 +5,7 @@ services:
     name: wcip-api
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: bash scripts/start_render.sh
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     plan: starter
     envVars:

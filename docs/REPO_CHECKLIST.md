@@ -305,8 +305,8 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 ## Infrastructure
 
 - ✅ Dockerfile + docker-compose.yml (api + worker + beat + postgres + redis)
-- ✅ render.yaml — Render Python deployment blueprint
-- ✅ `wcip-backend/scripts/start_render.sh` — Alembic + Uvicorn Render start command
+- ✅ render.yaml — Render Python deployment blueprint using `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- ✅ `wcip-backend/scripts/start_render.sh` — optional Alembic + Uvicorn helper script
 - ✅ `RENDER_BACKEND_DEPLOYMENT_AUDIT.md` — FastAPI backend Render checklist
 - ✅ `vercel.json` — root-level defensive Vercel config delegates builds to `wcip-frontend`
 - ✅ `wcip-frontend/vercel.json` — Next.js Vercel config for the correct frontend project root
@@ -356,7 +356,6 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
   imports replace those placeholders team by team.
 - WC2026 official groups are loaded locally. The knockout bracket remains a
   placeholder structure until FIFA-published fixture slots are imported.
-- Several generated artifacts are currently tracked by Git, including Python
-  bytecode, local SQLite databases, ETL cache files, CatBoost logs, model
-  pickles, and zip archives. Run the `git rm --cached` commands in
-  `SECURITY_CLEANUP.md`, then `make safety-check`, before committing cleanup.
+- The current tracked-file audit found no tracked `.env`, local database,
+  dependency, build, cache, coverage, log, or `.DS_Store` files in the unsafe
+  patterns checked by `CLEANUP_REPORT.md`.

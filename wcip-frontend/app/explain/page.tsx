@@ -57,7 +57,7 @@ function SHAPWaterfall({
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" horizontal={false} />
         <XAxis
           type="number"
-          tickFormatter={(v) => `${v > 0 ? "+" : ""}${v.toFixed(3)}`}
+          tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(3)}`}
           stroke="hsl(var(--muted))" fontSize={10}
         />
         <YAxis
@@ -115,7 +115,7 @@ function FeatureImportanceChart({ features }: { features: Record<string, number>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" horizontal={false} />
         <XAxis
           type="number"
-          tickFormatter={(v) => v.toFixed(3)}
+          tickFormatter={(v: number) => v.toFixed(3)}
           stroke="hsl(var(--muted))" fontSize={10}
         />
         <YAxis

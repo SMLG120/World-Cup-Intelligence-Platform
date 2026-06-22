@@ -213,8 +213,27 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         player_timestamp,
         model.trained_at if model else None,
     )
+    missing_sources = [
+        label
+        for label, value in (
+            ("Elo", elo),
+            ("FIFA rankings", fifa),
+            ("players", player_timestamp),
+            ("model", model),
+        )
+        if not value
+    ]
+    has_any_freshness = any((elo, fifa, match_updated, player_timestamp, model))
+    status = "available" if not missing_sources else "partial"
+    message = None
+    if not has_any_freshness:
+        message = "Freshness data is unavailable because local database is not seeded."
+    elif missing_sources:
+        message = f"Freshness data is partially available; missing: {', '.join(missing_sources)}."
 
     return {
+        "status": status,
+        "message": message,
         "generated_at": _iso(datetime.now(timezone.utc)),
         "data_snapshot_timestamp": data_snapshot_timestamp,
         "last_elo_update": _iso(elo.created_at if elo else None),

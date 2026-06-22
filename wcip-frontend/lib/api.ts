@@ -12,49 +12,51 @@ import type {
 } from "./types";
 
 export interface ApiConfigIssue {
-  code: "api_base_missing" | "api_base_localhost" | "api_base_frontend_origin" | "api_base_insecure";
+  code: "api_base_missing" | "api_base_includes_prefix" | "api_base_localhost" | "api_base_frontend_origin" | "api_base_insecure";
   message: string;
   detail: string;
 }
 
 function rawApiBase() {
-  return {
-    publicBase: process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "",
-    legacyBase: process.env.NEXT_PUBLIC_API_BASE?.trim() || "",
-  };
+  return process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "";
 }
 
-function resolveApiBase() {
-  const { publicBase, legacyBase } = rawApiBase();
-  const raw =
-    publicBase ||
-    legacyBase ||
-    "/backend/api/v1";
-  const trimmed = raw.replace(/\/+$/, "");
-  if (trimmed.endsWith("/api/v1") || trimmed.endsWith("/backend/api/v1")) {
-    return trimmed;
+export function buildApiUrl(path: string) {
+  const rawBase = rawApiBase();
+
+  if (!rawBase) {
+    throw new Error("NEXT_PUBLIC_API_BASE_URL is not configured");
   }
-  if (trimmed.startsWith("/")) {
-    return `${trimmed}/api/v1`;
-  }
-  return `${trimmed}/api/v1`;
+
+  const base = rawBase.replace(/\/+$/, "");
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  return `${base}${cleanPath}`;
 }
 
-const BASE = resolveApiBase();
+const API_PREFIX = "/api/v1";
 
 export function getApiBaseUrl() {
-  return BASE;
+  return buildApiUrl(API_PREFIX);
 }
 
 export function getApiConfigIssue(): ApiConfigIssue | null {
-  const { publicBase } = rawApiBase();
+  const publicBase = rawApiBase();
   const isProduction = process.env.NODE_ENV === "production";
 
-  if (isProduction && !publicBase) {
+  if (!publicBase) {
     return {
       code: "api_base_missing",
       message: "Backend URL is not configured.",
-      detail: "Set NEXT_PUBLIC_API_BASE_URL in Vercel to the deployed FastAPI backend URL, then redeploy.",
+      detail: "Set NEXT_PUBLIC_API_BASE_URL to the FastAPI backend origin, for example http://localhost:8000 locally or the Render backend URL in production.",
+    };
+  }
+
+  if (/\/api\/v1$/i.test(publicBase.replace(/\/+$/, ""))) {
+    return {
+      code: "api_base_includes_prefix",
+      message: "Backend URL includes /api/v1.",
+      detail: "Set NEXT_PUBLIC_API_BASE_URL to the backend origin only. The frontend appends /api/v1 in code.",
     };
   }
 
@@ -158,7 +160,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     headers["Authorization"] = `Bearer ${tokenStore.access}`;
   }
 
-  const res = await fetch(`${BASE}${path}`, { method, headers, body: payload });
+  const res = await fetch(buildApiUrl(`${API_PREFIX}${path}`), { method, headers, body: payload });
 
   if (res.status === 401 && auth && retry && tokenStore.refresh) {
     const refreshed = await tryRefresh();

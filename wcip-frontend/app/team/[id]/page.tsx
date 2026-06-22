@@ -104,7 +104,7 @@ function EloTrend({ history }: { history: { rating: number; opponent: string | n
         <YAxis domain={["dataMin - 30", "dataMax + 30"]} stroke="hsl(var(--muted))" fontSize={11} />
         <Tooltip
           formatter={(v: number) => [v, "Elo"]}
-          labelFormatter={(l) => data[l - 1]?.label ?? `Match ${l}`}
+          labelFormatter={(l: number) => data[l - 1]?.label ?? `Match ${l}`}
           contentStyle={{
             background: "hsl(var(--elevated))", border: "1px solid hsl(var(--line))",
             borderRadius: 8, fontSize: 11,
