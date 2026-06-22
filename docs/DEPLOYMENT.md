@@ -107,7 +107,8 @@ Service Type: Web Service
 Runtime: Python
 Root Directory: wcip-backend
 Build Command: pip install -r requirements.txt
-Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Start Command: bash scripts/start_render.sh
+Health Check Path: /health
 ```
 
 The backend app path is:
@@ -116,12 +117,14 @@ The backend app path is:
 app.main:app
 ```
 
-Run migrations with `alembic upgrade head` before or during deployment. The API
-starts with:
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+`scripts/start_render.sh` runs `alembic upgrade head` and then starts
+Uvicorn. **Always use this script as the Start Command, not a bare
+`uvicorn` command** — skipping it means new Postgres databases never get
+their Alembic migrations applied. If using `render.yaml` as a Blueprint, both
+services must set `rootDir: wcip-backend` since the blueprint file lives
+inside that subdirectory, not at the repo root — without it, Render runs
+`pip install -r requirements.txt` from the repo root, where `requirements.txt`
+doesn't exist, and the build fails.
 
 Required Render environment variables:
 
@@ -135,6 +138,10 @@ ENVIRONMENT=production
 APP_ENV=production
 DEBUG=false
 ```
+
+`DATABASE_URL` may arrive as `postgres://...` from some providers;
+`app/core/config.py` normalizes that to `postgresql://...` automatically, so
+either scheme works.
 
 Generate each secret locally with:
 

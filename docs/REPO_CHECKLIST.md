@@ -305,8 +305,11 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 ## Infrastructure
 
 - ✅ Dockerfile + docker-compose.yml (api + worker + beat + postgres + redis)
-- ✅ render.yaml — Render Python deployment blueprint using `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- ✅ `wcip-backend/scripts/start_render.sh` — optional Alembic + Uvicorn helper script
+- ✅ render.yaml — Render Python deployment blueprint; both services set
+  `rootDir: wcip-backend` and `startCommand: bash scripts/start_render.sh`
+  (runs Alembic migrations before Uvicorn starts)
+- ✅ `wcip-backend/scripts/start_render.sh` — Alembic + Uvicorn start script, required (not optional) as the Render start command
+- ✅ `app/core/config.py` normalizes `postgres://` `DATABASE_URL` values to `postgresql://` for SQLAlchemy compatibility
 - ✅ `RENDER_BACKEND_DEPLOYMENT_AUDIT.md` — FastAPI backend Render checklist
 - ✅ `vercel.json` — root-level defensive Vercel config delegates builds to `wcip-frontend`
 - ✅ `wcip-frontend/vercel.json` — Next.js Vercel config for the correct frontend project root

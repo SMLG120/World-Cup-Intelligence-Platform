@@ -1103,11 +1103,17 @@ paths.
 - Deploy the backend as a separate Render Python web service from
   `wcip-backend`.
 - Render backend build command: `pip install -r requirements.txt`.
-- Render backend start command:
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- Run migrations with `alembic upgrade head` before or during deployment.
+- Render backend start command: `bash scripts/start_render.sh` (runs
+  `alembic upgrade head` before starting Uvicorn — do not start with a bare
+  `uvicorn ...` command or migrations are silently skipped).
 - The FastAPI app path is `app.main:app`.
+- If deploying `render.yaml` as a Blueprint, each service must set
+  `rootDir: wcip-backend` since the blueprint file lives in that
+  subdirectory, not the repo root — otherwise build/start commands run from
+  the repo root and fail (`requirements.txt` not found there).
 - `DATABASE_URL` comes from the Render PostgreSQL Internal Database URL.
+  Either `postgres://` or `postgresql://` scheme works — `app/core/config.py`
+  normalizes `postgres://` to `postgresql://` automatically.
 - Generate strong production `SECRET_KEY`, `JWT_SECRET_KEY`, and
   `JWT_REFRESH_SECRET_KEY` values with
   `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
