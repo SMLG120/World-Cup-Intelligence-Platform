@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.db.base import SessionLocal
-from app.models.match_result import MatchResult
-from app.models.team import EloRatingSnapshot, Team, TeamEloRating
+from app.models.match_result import MLModelRecord, MatchResult
+from app.models.player import Player, PlayerRatingImport
+from app.models.ranking import FifaRankingSnapshot, RankingSourceLog
+from app.models.team import EloRatingSnapshot, EloSourceLog, Team, TeamEloRating
 from app.models.user import User, UserRole
+from app.services.data_refresh_service import get_data_freshness_from_db
 from app.services.rating_update_service import update_ratings_after_match
 from etl.elo.extract_elo import RawEloRecord, RawEloSnapshot
 from etl.elo.load_elo import load_elo_snapshot
@@ -114,6 +117,53 @@ def test_data_freshness_endpoint(client):
     assert "model_version" in payload
 
 
+def test_data_freshness_handles_empty_database(client):
+    with SessionLocal() as db:
+        tx = db.begin()
+        try:
+            _clear_freshness_tables(db)
+            payload = get_data_freshness_from_db(db)
+        finally:
+            tx.rollback()
+
+    assert payload["data_snapshot_version"].startswith("elo:none|fifa:none")
+    assert payload["data_snapshot_timestamp"] is None
+    assert payload["using_latest_cached_snapshot"] is False
+    assert payload["source_status"] == {
+        "elo": "not_loaded",
+        "fifa": "not_loaded",
+        "players": "not_loaded",
+    }
+
+
+def test_data_freshness_handles_partial_database(client):
+    with SessionLocal() as db:
+        tx = db.begin()
+        try:
+            _clear_freshness_tables(db)
+            db.add(
+                EloRatingSnapshot(
+                    snapshot_id="test-partial-elo",
+                    rating_date=date(2026, 6, 22),
+                    source_url="test://partial-elo",
+                    source_hash="partial",
+                    team_count=0,
+                    is_current=True,
+                    data_version="elo-partial-test",
+                )
+            )
+            db.flush()
+            payload = get_data_freshness_from_db(db)
+        finally:
+            tx.rollback()
+
+    assert payload["elo_data_version"] == "elo-partial-test"
+    assert payload["fifa_data_version"] is None
+    assert payload["last_player_data_update"] is None
+    assert payload["using_latest_cached_snapshot"] is True
+    assert payload["source_status"]["players"] == "not_loaded"
+
+
 def test_latest_elo_endpoint_returns_snapshot_or_cache(client):
     response = client.get("/api/v1/ratings/elo/latest?limit=5")
     assert response.status_code == 200
@@ -162,3 +212,15 @@ def test_admin_refresh_requires_admin(client, auth_headers, monkeypatch):
     )
     assert retrain_admin_response.status_code == 200
     assert retrain_admin_response.json()["action"] == "recalibration"
+
+
+def _clear_freshness_tables(db):
+    db.execute(delete(TeamEloRating))
+    db.execute(delete(EloRatingSnapshot))
+    db.execute(delete(EloSourceLog))
+    db.execute(delete(FifaRankingSnapshot))
+    db.execute(delete(RankingSourceLog))
+    db.execute(delete(PlayerRatingImport))
+    db.execute(delete(Player))
+    db.execute(delete(MatchResult))
+    db.execute(delete(MLModelRecord))
