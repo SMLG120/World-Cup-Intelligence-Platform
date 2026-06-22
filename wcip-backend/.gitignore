@@ -39,7 +39,7 @@ data/external/*
 *.pkl
 *.joblib
 *.onnx
-models/
+/models/
 !models/.gitkeep
 catboost_info/
 mlruns/
