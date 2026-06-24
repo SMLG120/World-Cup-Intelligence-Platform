@@ -8,6 +8,7 @@
 node_modules/
 node_modules_corrupt*/
 .next/
+.next.stale-*/
 out/
 dist/
 build/

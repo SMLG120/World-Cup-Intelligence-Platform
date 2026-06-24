@@ -52,28 +52,18 @@ and degrades gracefully. "Backend unreachable" / "Failed to fetch" /
 not being reachable at all*, which traces to two real bugs in
 `wcip-backend/render.yaml`:
 
-1. **`startCommand` skipped migrations.** It ran
-   `uvicorn app.main:app --host 0.0.0.0 --port $PORT` directly. The repo
-   already has `wcip-backend/scripts/start_render.sh`, which runs
-   `alembic upgrade head` before starting Uvicorn — but `render.yaml` never
-   called it. On a fresh Render PostgreSQL database this means Alembic never
-   ran. SQLAlchemy's `Base.metadata.create_all()` (called from
-   `app/db/init_db.py` on every app boot) still creates the base tables, so
-   the app might *boot*, but it diverges from the Alembic migration history
-   the moment a migration does anything `create_all()` can't express (e.g.
-   the RAG tables migration, data backfills, constraint changes) — a classic
-   source of "works after manual table creation, breaks again after the next
-   migration" instability.
-   **Fixed:** `startCommand: bash scripts/start_render.sh`.
+1. **Fresh Render databases need explicit migrations and bootstrap.** The web
+   service now uses the requested direct start command
+   `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. On a fresh Render
+   PostgreSQL database, run `alembic upgrade head` and
+   `python -m scripts.bootstrap_data` from Render Shell before serving traffic.
 
 2. **No `rootDir`.** `render.yaml` lives at `wcip-backend/render.yaml` but
    declared no `rootDir`. Render Blueprints run build/start commands from the
    **repository root** unless a service sets `rootDir` explicitly. With no
-   `rootDir`, `pip install -r requirements.txt` and `bash
-   scripts/start_render.sh` would execute from the repo root, where neither
-   `requirements.txt` nor `scripts/start_render.sh` exists at that path —
-   this alone is enough to make the Render build or boot fail outright,
-   matching the "Render backend has had crashes" symptom.
+   `rootDir`, `pip install -r requirements.txt` and the Uvicorn start command
+   would execute from the repo root, where `requirements.txt` does not exist —
+   this alone is enough to make the Render build or boot fail outright.
    **Fixed:** added `rootDir: wcip-backend` to both the `wcip-api` web
    service and the `wcip-worker` worker service.
 
@@ -168,7 +158,7 @@ regenerated an empty root lockfile.
 
 ## Files Changed
 
-- `wcip-backend/render.yaml` — `startCommand: bash scripts/start_render.sh` (runs Alembic before serving) and `rootDir: wcip-backend` on both services.
+- `wcip-backend/render.yaml` — direct Uvicorn start command and `rootDir: wcip-backend` on both services.
 - `wcip-backend/app/core/config.py` — normalizes `postgres://` → `postgresql://` in `DATABASE_URL`.
 - `wcip-backend/tests/test_config.py` — new, covers the URL normalization.
 - `package.json` / `package-lock.json` (repo root) — removed unused/misleading Next.js canary dependency block.
@@ -205,7 +195,7 @@ Service Type: Web Service
 Runtime: Python
 Root Directory: wcip-backend
 Build Command: pip install -r requirements.txt
-Start Command: bash scripts/start_render.sh
+Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 Health Check Path: /health
 ```
 

@@ -57,6 +57,15 @@ function freshnessState({
   if (!data) {
     return { label: "Data source unavailable", tone: "text-signal" };
   }
+  if (data.status === "available") {
+    return { label: "Predictions refreshed", tone: "text-pitch" };
+  }
+  if (data.status === "partial") {
+    return { label: "Partial snapshot", tone: "text-[hsl(45_95%_58%)]" };
+  }
+  if (data.status === "unavailable") {
+    return { label: "Data unavailable", tone: "text-signal" };
+  }
   const missingCore = [
     data.last_elo_update,
     data.last_fifa_ranking_update,
@@ -82,6 +91,14 @@ function errorDetail(error: unknown) {
   }
   if (error instanceof Error) return error.message;
   return "The backend freshness endpoint could not be reached.";
+}
+
+function sourceStatus(
+  data: ReturnType<typeof useDataFreshness>["data"],
+  key: string,
+  fallback?: string,
+) {
+  return data?.sources?.[key]?.status ?? fallback ?? "unknown";
 }
 
 function FreshnessRow({
@@ -121,6 +138,8 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
     configIssue,
   });
   const isAdmin = user?.role === "admin";
+  const warnings = data?.warnings ?? [];
+  const hasNotice = Boolean(data?.message || warnings.length > 0);
   const adminPending = refresh.isPending || refreshElo.isPending || refreshFifa.isPending
     || refreshPlayers.isPending || retrainCheck.isPending || retrain.isPending;
   const adminActions = [
@@ -137,22 +156,24 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
         {
           label: "Elo updated",
           value: formatUtc(data.last_elo_update),
-          detail: `${formatDateOnly(data.last_elo_rating_date) ?? "No rating date"} · ${data.elo_data_version ?? "No version"}`,
+          detail: `${formatDateOnly(data.last_elo_rating_date) ?? "No rating date"} · ${data.sources?.elo?.source_name ?? data.elo_data_version ?? "No version"}`,
         },
         {
           label: "FIFA ranking updated",
           value: formatUtc(data.last_fifa_ranking_update),
-          detail: `${formatDateOnly(data.last_fifa_ranking_date) ?? "No ranking date"} · ${data.fifa_data_version ?? "No version"}`,
+          detail: `${formatDateOnly(data.last_fifa_ranking_date) ?? "No ranking date"} · ${data.sources?.fifa_rankings?.source_name ?? data.fifa_data_version ?? "No version"}`,
         },
         {
           label: "Squad data updated",
           value: formatUtc(data.last_player_data_update),
-          detail: data.player_data_source ?? "No squad source",
+          detail: data.player_data_source
+            ?? data.sources?.squads?.source_name
+            ?? "No squad source",
         },
         {
           label: "Latest results updated",
           value: formatUtc(data.last_match_result_update),
-          detail: "Match results source",
+          detail: `${data.sources?.matches?.rows ?? 0} results loaded`,
         },
         {
           label: "Model trained",
@@ -167,7 +188,7 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
         {
           label: "Source status",
           value: data.using_latest_cached_snapshot ? "Snapshot available" : "Snapshot missing",
-          detail: `Elo ${data.source_status?.elo ?? "unknown"} · FIFA ${data.source_status?.fifa ?? "unknown"} · Players ${data.source_status?.players ?? "unknown"}`,
+          detail: `Elo ${sourceStatus(data, "elo", data.source_status?.elo)} · FIFA ${sourceStatus(data, "fifa_rankings", data.source_status?.fifa)} · Squads ${sourceStatus(data, "squads", data.source_status?.players)} · Ratings ${sourceStatus(data, "player_ratings")}`,
         },
       ]
     : [];
@@ -223,6 +244,19 @@ export function DataFreshnessCard({ compact = false }: { compact?: boolean }) {
           {visibleRows.map((row) => (
             <FreshnessRow key={row.label} {...row} />
           ))}
+        </div>
+      )}
+
+      {!compact && !freshness.isError && hasNotice && (
+        <div className="mt-3 rounded-md border border-[hsl(45_95%_58%/0.35)] bg-[hsl(45_95%_58%/0.08)] px-3 py-2 text-xs text-fg">
+          {data?.message && <p className="font-medium">{data.message}</p>}
+          {warnings.length > 0 && (
+            <ul className="mt-1 space-y-1 text-muted">
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
