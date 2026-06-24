@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import cache
 from app.db.base import SessionLocal
-from app.models.match_result import MLModelRecord, MatchResult
-from app.models.player import Player, PlayerRatingImport
+from app.models.match_result import MLModelRecord, MatchResult, QualifiedTeam
+from app.models.player import Coach, Player, PlayerRatingImport
 from app.models.ranking import FifaRankingSnapshot, RankingSourceLog
-from app.models.team import EloRatingSnapshot, EloSourceLog
+from app.models.team import EloRatingSnapshot, EloSourceLog, TeamEloRating
 from ml.features import FEATURE_VERSION
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,41 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         .order_by(RankingSourceLog.started_at.desc(), RankingSourceLog.id.desc())
         .limit(1)
     )
+    wc_team_names = db.scalars(
+        select(QualifiedTeam.team_name)
+        .where(QualifiedTeam.tournament_year == 2026)
+        .order_by(QualifiedTeam.team_name)
+    ).all()
+    team_count = len(wc_team_names)
+    player_count = db.scalar(select(func.count()).select_from(Player)) or 0
+    coach_count = db.scalar(select(func.count()).select_from(Coach)) or 0
+    match_count = db.scalar(select(func.count()).select_from(MatchResult)) or 0
+    model_count = db.scalar(
+        select(func.count()).select_from(MLModelRecord).where(MLModelRecord.is_active.is_(True))
+    ) or 0
+    elo_rows = (
+        db.scalar(
+            select(func.count())
+            .select_from(TeamEloRating)
+            .where(TeamEloRating.snapshot_id == elo.id)
+        )
+        if elo
+        else 0
+    )
+    fifa_rows = fifa.team_count if fifa else 0
+    rated_player_count = db.scalar(
+        select(func.count()).select_from(Player).where(Player.player_rating.is_not(None))
+    ) or 0
+
+    missing_rating_teams: list[str] = []
+    for team_name in wc_team_names:
+        rated_for_team = db.scalar(
+            select(func.count())
+            .select_from(Player)
+            .where(Player.team_name == team_name, Player.player_rating.is_not(None))
+        ) or 0
+        if rated_for_team == 0:
+            missing_rating_teams.append(team_name)
 
     snapshot_parts = [
         f"elo:{elo.data_version}" if elo else "elo:none",
@@ -213,27 +248,86 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         player_timestamp,
         model.trained_at if model else None,
     )
+    warnings: list[str] = []
+    if missing_rating_teams:
+        sample = ", ".join(missing_rating_teams[:8])
+        suffix = "" if len(missing_rating_teams) <= 8 else f", and {len(missing_rating_teams) - 8} more"
+        warnings.append(
+            f"Player ratings missing for {sample}{suffix}; neutral defaults are used."
+        )
+
+    source_status = {
+        "elo": {
+            "status": "available" if elo else "missing",
+            "source_name": getattr(last_elo_log, "source_name", None) if last_elo_log else "World Football Elo",
+            "source_date": elo.rating_date.isoformat() if elo else None,
+            "source_url": elo.source_url if elo else None,
+            "rows": int(elo_rows or 0),
+            "version": elo.data_version if elo else None,
+            "last_run_status": _log_status(last_elo_log),
+        },
+        "fifa_rankings": {
+            "status": "available" if fifa else "missing",
+            "source_name": getattr(last_fifa_log, "source_name", None) if last_fifa_log else "FIFA",
+            "source_date": fifa.ranking_date.isoformat() if fifa else None,
+            "source_url": fifa.source_url if fifa else None,
+            "rows": int(fifa_rows or 0),
+            "version": fifa.ranking_id if fifa else None,
+            "last_run_status": _log_status(last_fifa_log),
+        },
+        "squads": {
+            "status": "available" if team_count >= 48 and player_count >= 1200 and coach_count >= 48 else "partial" if player_count or coach_count or team_count else "missing",
+            "teams": int(team_count),
+            "players": int(player_count),
+            "coaches": int(coach_count),
+            "source_name": player_import.source_name if player_import else None,
+            "source_date": _iso(player_timestamp),
+        },
+        "player_ratings": {
+            "status": "available" if rated_player_count and not missing_rating_teams else "partial" if rated_player_count else "missing",
+            "rated_players": int(rated_player_count),
+            "missing_teams": missing_rating_teams,
+            "source_name": player_import.source_name if player_import else None,
+            "source_version": player_import.source_version if player_import else None,
+            "last_run_status": player_import.status if player_import else "not_loaded",
+        },
+        "matches": {
+            "status": "available" if match_count else "missing",
+            "rows": int(match_count),
+            "last_update": _iso(match_updated),
+        },
+        "models": {
+            "status": "available" if model_count else "missing",
+            "active_models": int(model_count),
+            "latest_model": model.version if model else None,
+            "last_trained_at": _iso(model.trained_at if model else None),
+        },
+    }
     missing_sources = [
         label
-        for label, value in (
-            ("Elo", elo),
-            ("FIFA rankings", fifa),
-            ("players", player_timestamp),
-            ("model", model),
+        for label, source in (
+            ("Elo", source_status["elo"]),
+            ("FIFA rankings", source_status["fifa_rankings"]),
+            ("squads", source_status["squads"]),
+            ("player ratings", source_status["player_ratings"]),
+            ("models", source_status["models"]),
         )
-        if not value
+        if source["status"] in {"missing", "partial"}
     ]
     has_any_freshness = any((elo, fifa, match_updated, player_timestamp, model))
-    status = "available" if not missing_sources else "partial"
+    status = "available" if not missing_sources and not warnings else "partial"
     message = None
     if not has_any_freshness:
-        message = "Freshness data is unavailable because local database is not seeded."
+        status = "unavailable"
+        message = "Database is reachable but no source data has been imported."
     elif missing_sources:
-        message = f"Freshness data is partially available; missing: {', '.join(missing_sources)}."
+        message = f"Some sources are missing or partial: {', '.join(missing_sources)}."
 
     return {
         "status": status,
         "message": message,
+        "warnings": warnings,
+        "sources": source_status,
         "generated_at": _iso(datetime.now(timezone.utc)),
         "data_snapshot_timestamp": data_snapshot_timestamp,
         "last_elo_update": _iso(elo.created_at if elo else None),

@@ -6,8 +6,8 @@ from datetime import date, datetime
 from sqlalchemy import delete, func, select
 
 from app.db.base import SessionLocal
-from app.models.match_result import MLModelRecord, MatchResult
-from app.models.player import Player, PlayerRatingImport
+from app.models.match_result import MLModelRecord, MatchResult, QualifiedTeam
+from app.models.player import Coach, Player, PlayerRatingImport, PlayerRatingRecord
 from app.models.ranking import FifaRankingSnapshot, RankingSourceLog
 from app.models.team import EloRatingSnapshot, EloSourceLog, Team, TeamEloRating
 from app.models.user import User, UserRole
@@ -100,7 +100,9 @@ def test_data_freshness_endpoint(client):
     response = client.get("/api/v1/data/freshness")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] in {"available", "partial"}
+    assert payload["status"] in {"available", "partial", "unavailable"}
+    assert "warnings" in payload
+    assert "sources" in payload
     assert "data_snapshot_version" in payload
     assert "source_status" in payload
     for key in (
@@ -128,10 +130,15 @@ def test_data_freshness_handles_empty_database(client):
             tx.rollback()
 
     assert payload["data_snapshot_version"].startswith("elo:none|fifa:none")
-    assert payload["status"] == "partial"
-    assert payload["message"] == "Freshness data is unavailable because local database is not seeded."
+    assert payload["status"] == "unavailable"
+    assert payload["message"] == "Database is reachable but no source data has been imported."
+    assert payload["warnings"] == []
     assert payload["data_snapshot_timestamp"] is None
     assert payload["using_latest_cached_snapshot"] is False
+    assert payload["sources"]["elo"]["status"] == "missing"
+    assert payload["sources"]["fifa_rankings"]["status"] == "missing"
+    assert payload["sources"]["squads"]["status"] == "missing"
+    assert payload["sources"]["player_ratings"]["status"] == "missing"
     assert payload["source_status"] == {
         "elo": "not_loaded",
         "fifa": "not_loaded",
@@ -162,11 +169,61 @@ def test_data_freshness_handles_partial_database(client):
 
     assert payload["elo_data_version"] == "elo-partial-test"
     assert payload["status"] == "partial"
-    assert "missing:" in payload["message"]
+    assert "Some sources are missing or partial:" in payload["message"]
     assert payload["fifa_data_version"] is None
     assert payload["last_player_data_update"] is None
     assert payload["using_latest_cached_snapshot"] is True
+    assert payload["sources"]["elo"]["status"] == "available"
+    assert payload["sources"]["player_ratings"]["status"] == "missing"
     assert payload["source_status"]["players"] == "not_loaded"
+
+
+def test_data_freshness_warns_when_wc_team_has_no_player_ratings(client):
+    with SessionLocal() as db:
+        tx = db.begin()
+        try:
+            _clear_freshness_tables(db)
+            db.add(
+                QualifiedTeam(
+                    team_name="Mexico",
+                    team_code="MEX",
+                    confederation="CONCACAF",
+                    tournament_year=2026,
+                )
+            )
+            db.add(
+                Player(
+                    name="Unrated Mexico Player",
+                    team_name="Mexico",
+                    position="MID",
+                    club="Test Club",
+                    age=25,
+                    nationality="Mexico",
+                    data_source="test",
+                    player_rating=None,
+                )
+            )
+            db.add(
+                Player(
+                    name="Rated Canada Player",
+                    team_name="Canada",
+                    position="FWD",
+                    club="Test Club",
+                    age=25,
+                    nationality="Canada",
+                    data_source="test",
+                    player_rating=72.0,
+                )
+            )
+            db.flush()
+            payload = get_data_freshness_from_db(db)
+        finally:
+            tx.rollback()
+
+    assert payload["status"] == "partial"
+    assert payload["sources"]["player_ratings"]["status"] == "partial"
+    assert payload["sources"]["player_ratings"]["missing_teams"] == ["Mexico"]
+    assert any("Player ratings missing for Mexico" in warning for warning in payload["warnings"])
 
 
 def test_latest_elo_endpoint_returns_snapshot_or_cache(client):
@@ -225,7 +282,10 @@ def _clear_freshness_tables(db):
     db.execute(delete(EloSourceLog))
     db.execute(delete(FifaRankingSnapshot))
     db.execute(delete(RankingSourceLog))
+    db.execute(delete(PlayerRatingRecord))
     db.execute(delete(PlayerRatingImport))
     db.execute(delete(Player))
+    db.execute(delete(Coach))
     db.execute(delete(MatchResult))
     db.execute(delete(MLModelRecord))
+    db.execute(delete(QualifiedTeam))

@@ -53,9 +53,31 @@ export interface LatestEloSnapshot {
   entries: EloRatingEntry[];
 }
 
+export interface DataFreshnessSource {
+  status: "available" | "partial" | "missing" | string;
+  source_name?: string | null;
+  source_date?: string | null;
+  source_url?: string | null;
+  rows?: number | null;
+  version?: string | null;
+  last_run_status?: string | null;
+  teams?: number | null;
+  players?: number | null;
+  coaches?: number | null;
+  rated_players?: number | null;
+  missing_teams?: string[];
+  source_version?: string | null;
+  last_update?: string | null;
+  active_models?: number | null;
+  latest_model?: string | null;
+  last_trained_at?: string | null;
+}
+
 export interface DataFreshness {
-  status?: "available" | "partial" | string;
+  status?: "available" | "partial" | "unavailable" | string;
   message?: string | null;
+  warnings?: string[];
+  sources?: Record<string, DataFreshnessSource>;
   generated_at: string;
   data_snapshot_timestamp: string | null;
   last_elo_update: string | null;

@@ -220,6 +220,8 @@ Manual validation:
 
 ```bash
 cd wcip-backend
+python -m scripts.bootstrap_data
+python -m scripts.validate_player_ratings
 python -m ml.validate_features
 python -m ml.validate_player_features
 python -m ml.retrain_if_needed --material-ranking-changes 5 --apply
@@ -1103,9 +1105,8 @@ paths.
 - Deploy the backend as a separate Render Python web service from
   `wcip-backend`.
 - Render backend build command: `pip install -r requirements.txt`.
-- Render backend start command: `bash scripts/start_render.sh` (runs
-  `alembic upgrade head` before starting Uvicorn — do not start with a bare
-  `uvicorn ...` command or migrations are silently skipped).
+- Render backend start command:
+  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 - The FastAPI app path is `app.main:app`.
 - If deploying `render.yaml` as a Blueprint, each service must set
   `rootDir: wcip-backend` since the blueprint file lives in that
@@ -1126,9 +1127,9 @@ paths.
 - Set Vercel `NEXT_PUBLIC_API_BASE_URL` to the deployed Render backend origin.
 - In Vercel, set the frontend Root Directory to `wcip-frontend`; the repository
   root is not the Next.js app.
-- Run Alembic migrations before serving production traffic.
-- Run WC2026 seed ETL from a vetted source snapshot when tournament rosters are
-  updated.
+- Run `alembic upgrade head` and `python -m scripts.bootstrap_data` from Render
+  Shell before serving production traffic, then rerun the bootstrap whenever
+  tournament rosters or source snapshots are updated.
 
 ## License And Disclaimer
 
