@@ -40,6 +40,11 @@ bootstrap.
   and structured `sources` while preserving the legacy flat fields.
 - Updated frontend freshness types and UI to trust top-level backend status and
   display warnings such as missing player ratings / neutral defaults.
+- Unignored the required bundled source artifacts so Render can receive them:
+  `data/cache/results.csv`, `data/cache/fifa_rankings.json`,
+  `data/external/fifa_wc2026_squad_lists_english.pdf`,
+  `data/external/fifa_wc2026_squad_players.csv`, and the checked model `.pkl`
+  artifacts under `wcip-backend/models/`.
 
 ## Current Local Database Snapshot
 
@@ -136,6 +141,12 @@ The previous `app.models.rag` crash is fixed in the current codebase.
 `data/external/ea_player_ratings.csv` is not present locally. That is okay if
 the official squad PDF-derived proxy ratings are imported and labeled as such.
 
+Before this repair, `.gitignore` hid the local squad PDF/CSV, cached FIFA
+rankings, cached historical results, and model artifacts from Git. That meant a
+Render deployment could have working Python code and a live API but no source
+files for production bootstrap to import. Those files are now allow-listed by
+name; they still need to be committed with the code.
+
 ## Why Player Ratings Are Missing In Production
 
 The warning:
@@ -149,11 +160,13 @@ Local data does not reproduce this for WC2026 teams, so the most likely
 production root cause is:
 
 1. Render database migrations did not fully create the schema from Alembic alone.
-2. Render database has teams/qualified teams but has not run the full squad and
+2. Render deployment did not include the bundled source files needed by the
+   bootstrap command.
+3. Render database has teams/qualified teams but has not run the full squad and
    player-rating bootstrap.
-3. Production startup may run lightweight table creation/seeding but not the
+4. Production startup may run lightweight table creation/seeding but not the
    complete data imports.
-4. Frontend receives `200 OK` payloads but the payloads are partial.
+5. Frontend receives `200 OK` payloads but the payloads are partial.
 
 ## Frontend Contract Check
 

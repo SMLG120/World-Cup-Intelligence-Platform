@@ -114,13 +114,13 @@ in production.
 - **Render Python web service**:
   - Root Directory: `wcip-backend`
   - Build Command: `pip install -r requirements.txt`
-  - Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+  - Start Command: `bash scripts/start_render.sh`
   - Direct app path: `app.main:app`
   - Required env: `DATABASE_URL`, `SECRET_KEY`, `JWT_SECRET_KEY`,
     `JWT_REFRESH_SECRET_KEY`, `ALLOWED_ORIGINS`, `ENVIRONMENT=production`
   - `DATABASE_URL` comes from Render PostgreSQL's Internal Database URL.
-  - Run `alembic upgrade head` and `python -m scripts.bootstrap_data` from
-    Render Shell after provisioning a fresh database.
+  - `scripts/start_render.sh` runs migrations, `python -m scripts.bootstrap_data`,
+    and then Uvicorn. The bootstrap is idempotent and safe on restarts.
   - Generate secrets with
     `python -c "import secrets; print(secrets.token_urlsafe(64))"`.
   - Set `ALLOWED_ORIGINS` to

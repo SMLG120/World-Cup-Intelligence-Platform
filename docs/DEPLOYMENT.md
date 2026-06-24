@@ -107,7 +107,7 @@ Service Type: Web Service
 Runtime: Python
 Root Directory: wcip-backend
 Build Command: pip install -r requirements.txt
-Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Start Command: bash scripts/start_render.sh
 Health Check Path: /health
 ```
 
@@ -117,12 +117,12 @@ The backend app path is:
 app.main:app
 ```
 
-Run `alembic upgrade head` and `python -m scripts.bootstrap_data` from Render
-Shell after provisioning a fresh database. If using `render.yaml` as a
-Blueprint, both services must set `rootDir: wcip-backend` since the blueprint
-file lives inside that subdirectory, not at the repo root — without it, Render
-runs `pip install -r requirements.txt` from the repo root, where
-`requirements.txt` doesn't exist, and the build fails.
+`scripts/start_render.sh` runs `alembic upgrade head`, then
+`python -m scripts.bootstrap_data`, then starts Uvicorn. If using
+`render.yaml` as a Blueprint, both services must set `rootDir: wcip-backend`
+since the blueprint file lives inside that subdirectory, not at the repo root —
+without it, Render runs `pip install -r requirements.txt` from the repo root,
+where `requirements.txt` doesn't exist, and the build fails.
 
 Required Render environment variables:
 

@@ -310,6 +310,7 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
             ("FIFA rankings", source_status["fifa_rankings"]),
             ("squads", source_status["squads"]),
             ("player ratings", source_status["player_ratings"]),
+            ("matches", source_status["matches"]),
             ("models", source_status["models"]),
         )
         if source["status"] in {"missing", "partial"}

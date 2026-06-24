@@ -82,6 +82,8 @@ artifacts/
 models/generated/
 catboost_info/
 wcip-backend/models/
+!wcip-backend/models/
+!wcip-backend/models/*.pkl
 
 # Docker / local runtime
 docker-data/
@@ -92,8 +94,12 @@ postgres-data/
 wcip-backend/etl/data/etl_state.json
 wcip-backend/data/cache/*
 !wcip-backend/data/cache/.gitkeep
+!wcip-backend/data/cache/results.csv
+!wcip-backend/data/cache/fifa_rankings.json
 wcip-backend/data/external/*
 !wcip-backend/data/external/.gitkeep
+!wcip-backend/data/external/fifa_wc2026_squad_lists_english.pdf
+!wcip-backend/data/external/fifa_wc2026_squad_players.csv
 
 # Archives / local exports
 *.zip
