@@ -307,7 +307,7 @@ Status legend: ✅ Complete · 🔄 In Progress · 📋 Planned
 - ✅ Dockerfile + docker-compose.yml (api + worker + beat + postgres + redis)
 - ✅ render.yaml — Render Python deployment blueprint; both services set
   `rootDir: wcip-backend`; the web service starts with
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+  `bash scripts/start_render.sh`
 - ✅ `wcip-backend/scripts/bootstrap_data.py` — idempotent production bootstrap after Alembic migrations
 - ✅ `app/core/config.py` normalizes `postgres://` `DATABASE_URL` values to `postgresql://` for SQLAlchemy compatibility
 - ✅ `RENDER_BACKEND_DEPLOYMENT_AUDIT.md` — FastAPI backend Render checklist

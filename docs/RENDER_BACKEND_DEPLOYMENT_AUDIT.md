@@ -27,20 +27,14 @@ Service Type: Web Service
 Runtime: Python
 Root Directory: wcip-backend
 Build Command: pip install -r requirements.txt
-Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Start Command: bash scripts/start_render.sh
 ```
 
-Run migrations and bootstrap data separately from Render Shell before serving a
-fresh production database:
+The start script runs migrations and data bootstrap before serving:
 
 ```bash
 alembic upgrade head
 python -m scripts.bootstrap_data
-```
-
-The web start command is:
-
-```bash
 uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 

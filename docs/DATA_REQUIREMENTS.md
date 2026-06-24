@@ -58,10 +58,24 @@ tables. Freshness is derived from source/import log tables and data timestamps.
 | Models | at least one active `ml_models` row for the model dashboard |
 | RAG | indexed docs/chunks/embeddings if Ask Analyst is enabled |
 
+## Required Bundled Source Files For Render
+
+These files are small enough to ship with the backend and are allow-listed in
+`.gitignore` so `python -m scripts.bootstrap_data` can populate a fresh Render
+database without relying on a developer laptop:
+
+| Source | Required file |
+|---|---|
+| Historical matches | `wcip-backend/data/cache/results.csv` |
+| FIFA rankings fallback/cache | `wcip-backend/data/cache/fifa_rankings.json` |
+| WC2026 squads/coaches | `wcip-backend/data/external/fifa_wc2026_squad_lists_english.pdf` |
+| Player-rating proxy import | `wcip-backend/data/external/fifa_wc2026_squad_players.csv` |
+| Elo ratings | `wcip-backend/data/processed/world_football_elo_ratings_2026_06_21.csv` |
+| Model metadata/artifacts | `wcip-backend/models/*.pkl` |
+
 ## Player Ratings Rule
 
 Do not fake ratings. If no licensed/manual `ea_player_ratings.csv` exists, the
 app may use the official FIFA squad-list proxy generated from roster facts, but
 it must label it clearly as `fifa_wc2026_squad_pdf` /
 `fifa_roster_proxy_v1`.
-

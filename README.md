@@ -1105,8 +1105,9 @@ paths.
 - Deploy the backend as a separate Render Python web service from
   `wcip-backend`.
 - Render backend build command: `pip install -r requirements.txt`.
-- Render backend start command:
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- Render backend start command: `bash scripts/start_render.sh`.
+  The script runs `alembic upgrade head`, then `python -m scripts.bootstrap_data`,
+  then starts `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 - The FastAPI app path is `app.main:app`.
 - If deploying `render.yaml` as a Blueprint, each service must set
   `rootDir: wcip-backend` since the blueprint file lives in that
@@ -1127,9 +1128,8 @@ paths.
 - Set Vercel `NEXT_PUBLIC_API_BASE_URL` to the deployed Render backend origin.
 - In Vercel, set the frontend Root Directory to `wcip-frontend`; the repository
   root is not the Next.js app.
-- Run `alembic upgrade head` and `python -m scripts.bootstrap_data` from Render
-  Shell before serving production traffic, then rerun the bootstrap whenever
-  tournament rosters or source snapshots are updated.
+- The bootstrap is idempotent; rerun it from Render Shell whenever tournament
+  rosters or source snapshots are updated.
 
 ## License And Disclaimer
 

@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 ELO_CSV = ROOT / "data" / "processed" / "world_football_elo_ratings_2026_06_21.csv"
 SQUAD_PDF = ROOT / "data" / "external" / "fifa_wc2026_squad_lists_english.pdf"
 SQUAD_CSV = ROOT / "data" / "external" / "fifa_wc2026_squad_players.csv"
+FIFA_CACHE = ROOT / "data" / "cache" / "fifa_rankings.json"
+RESULTS_CSV = ROOT / "data" / "cache" / "results.csv"
 MODEL_DIR = ROOT / "models"
 MODEL_FILES = {
     "logistic": "logistic.pkl",
@@ -45,6 +47,7 @@ MODEL_FILES = {
     "lightgbm": "lightgbm.pkl",
     "catboost": "catboost.pkl",
 }
+MIN_MATCH_RESULTS = 40_000
 
 
 def run_bootstrap(*, build_rag: bool = False, skip_network: bool = False) -> dict[str, Any]:
@@ -54,7 +57,7 @@ def run_bootstrap(*, build_rag: bool = False, skip_network: bool = False) -> dic
     _verify_database()
     _run_migrations()
 
-    from etl.pipeline import run_player_rating_import, run_wc2026_seed
+    from etl.pipeline import run_historical_results, run_player_rating_import, run_wc2026_seed
     from etl.players.fifa_squad_pdf import build_csv_from_source
     from etl.players.load_squad_pdf import load_squad_from_pdf
     from etl.elo.load_elo_csv import load_elo_csv
@@ -71,7 +74,10 @@ def run_bootstrap(*, build_rag: bool = False, skip_network: bool = False) -> dic
 
     if not SQUAD_CSV.exists():
         results["squad_csv"] = build_csv_from_source(source_pdf=SQUAD_PDF, output_path=SQUAD_CSV)
-    results["player_ratings"] = run_player_rating_import(SQUAD_CSV)
+    if _player_ratings_already_loaded():
+        results["player_ratings"] = {"status": "already_present", "source_file": str(SQUAD_CSV)}
+    else:
+        results["player_ratings"] = run_player_rating_import(SQUAD_CSV)
     if results["player_ratings"].get("status") == "skipped":
         warnings.append("Player ratings source is missing; neutral defaults will be used.")
 
@@ -80,8 +86,25 @@ def run_bootstrap(*, build_rag: bool = False, skip_network: bool = False) -> dic
     else:
         warnings.append(f"Elo CSV missing: {ELO_CSV}")
 
-    if skip_network:
-        warnings.append("FIFA ranking import skipped because --skip-network was set.")
+    match_count = _match_result_count()
+    force_full_results = match_count < MIN_MATCH_RESULTS
+    if match_count >= MIN_MATCH_RESULTS:
+        results["historical_results"] = {"status": "already_present", "rows": match_count}
+    elif RESULTS_CSV.exists():
+        results["historical_results"] = {
+            "inserted": run_historical_results(force_refresh=False, ignore_state=force_full_results),
+            "full_load": force_full_results,
+        }
+    elif skip_network:
+        warnings.append(f"Historical results cache missing: {RESULTS_CSV}")
+    else:
+        results["historical_results"] = {
+            "inserted": run_historical_results(force_refresh=True, ignore_state=force_full_results),
+            "full_load": force_full_results,
+        }
+
+    if skip_network and not FIFA_CACHE.exists():
+        warnings.append(f"FIFA ranking cache missing: {FIFA_CACHE}")
     else:
         try:
             results["fifa_rankings"] = run_fifa_rankings_update(force_refresh=False)
@@ -117,6 +140,12 @@ def _run_migrations() -> None:
     config = Config(str(ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "alembic"))
     command.upgrade(config, "head")
+
+
+def _match_result_count() -> int:
+    with SessionLocal() as db:
+        match_count = db.scalar(select(func.count()).select_from(MatchResult)) or 0
+    return int(match_count)
 
 
 def _ensure_model_metadata() -> dict[str, Any]:
@@ -162,6 +191,43 @@ def _ensure_model_metadata() -> dict[str, Any]:
     return {"status": "created" if inserted else "missing", "inserted": inserted, "skipped": skipped, "missing": missing}
 
 
+def _player_ratings_already_loaded() -> bool:
+    if not SQUAD_CSV.exists():
+        return False
+
+    with SessionLocal() as db:
+        latest_success = db.scalar(
+            select(PlayerRatingImport)
+            .where(
+                PlayerRatingImport.source_name == "fifa_wc2026_squad_pdf",
+                PlayerRatingImport.status == "success",
+            )
+            .order_by(PlayerRatingImport.imported_at.desc(), PlayerRatingImport.id.desc())
+            .limit(1)
+        )
+        if not latest_success or int(latest_success.valid_rows or 0) < 1_000:
+            return False
+
+        wc_team_names = db.scalars(
+            select(QualifiedTeam.team_name)
+            .where(QualifiedTeam.tournament_year == 2026)
+            .order_by(QualifiedTeam.team_name)
+        ).all()
+        if len(wc_team_names) < 48:
+            return False
+
+        rated_team_count = 0
+        for team_name in wc_team_names:
+            rated_for_team = db.scalar(
+                select(func.count())
+                .select_from(Player)
+                .where(Player.team_name == team_name, Player.player_rating.is_not(None))
+            ) or 0
+            if rated_for_team:
+                rated_team_count += 1
+        return rated_team_count >= 48
+
+
 def _build_rag_index() -> dict[str, Any]:
     from rag.indexer import run_index
 
@@ -193,8 +259,6 @@ def _counts(db) -> dict[str, int]:
 def _print_summary(summary: dict[str, Any]) -> None:
     counts = summary["counts"]
     player_ratings = summary["results"].get("player_ratings") or {}
-    elo = summary["results"].get("elo") or {}
-    fifa = summary["results"].get("fifa_rankings") or {}
     model_metadata = summary["results"].get("model_metadata") or {}
 
     lines = [
@@ -203,10 +267,13 @@ def _print_summary(summary: dict[str, Any]) -> None:
         f"qualified_teams={counts.get('qualified_teams', 0)}",
         f"players={counts.get('players', 0)}",
         f"coaches={counts.get('coaches', 0)}",
-        f"elo_rows_imported={elo.get('rows_loaded', counts.get('team_elo_ratings', 0))}",
-        f"fifa_rankings_imported={fifa.get('entries', counts.get('fifa_ranking_entries', 0))}",
-        f"player_ratings_imported={player_ratings.get('valid_rows', counts.get('player_rating_records', 0))}",
-        f"model_metadata_imported={model_metadata.get('inserted', 0)}",
+        f"matches={counts.get('match_results', 0)}",
+        f"elo_rows={counts.get('team_elo_ratings', 0)}",
+        f"fifa_ranking_entries={counts.get('fifa_ranking_entries', 0)}",
+        f"player_rating_records={counts.get('player_rating_records', 0)}",
+        f"active_model_metadata={counts.get('ml_models', 0)}",
+        f"player_rating_import_status={player_ratings.get('status', 'unknown')}",
+        f"model_metadata_status={model_metadata.get('status', 'unknown')}",
         f"freshness_status={summary.get('freshness_status')}",
         f"warnings={json.dumps(summary.get('warnings', []), ensure_ascii=False)}",
     ]

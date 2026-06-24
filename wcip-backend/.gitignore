@@ -32,8 +32,12 @@ logs/
 etl/data/etl_state.json
 data/cache/*
 !data/cache/.gitkeep
+!data/cache/results.csv
+!data/cache/fifa_rankings.json
 data/external/*
 !data/external/.gitkeep
+!data/external/fifa_wc2026_squad_lists_english.pdf
+!data/external/fifa_wc2026_squad_players.csv
 
 # ML artifacts
 *.pkl
@@ -41,6 +45,8 @@ data/external/*
 *.onnx
 /models/
 !models/.gitkeep
+!/models/
+!/models/*.pkl
 catboost_info/
 mlruns/
 wandb/

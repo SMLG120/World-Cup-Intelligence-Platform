@@ -32,7 +32,7 @@ def _save_state(state: dict) -> None:
     _STATE_FILE.write_text(json.dumps(state, default=str), encoding="utf-8")
 
 
-def run_historical_results(force_refresh: bool = False) -> int:
+def run_historical_results(force_refresh: bool = False, ignore_state: bool = False) -> int:
     """Load all international match results since last run (or all-time on first run)."""
     from etl.extract.international_results import fetch_results_csv, parse_results
     from etl.load.db_loader import load_match_results
@@ -42,7 +42,7 @@ def run_historical_results(force_refresh: bool = False) -> int:
     state = _load_state()
     last_date_str = state.get("last_results_date")
     since: date | None = None
-    if last_date_str and not force_refresh:
+    if last_date_str and not force_refresh and not ignore_state:
         since = date.fromisoformat(last_date_str) - timedelta(days=7)  # 7-day overlap
         logger.info("Incremental load since %s", since)
 

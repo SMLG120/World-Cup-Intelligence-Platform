@@ -53,15 +53,14 @@ not being reachable at all*, which traces to two real bugs in
 `wcip-backend/render.yaml`:
 
 1. **Fresh Render databases need explicit migrations and bootstrap.** The web
-   service now uses the requested direct start command
-   `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. On a fresh Render
-   PostgreSQL database, run `alembic upgrade head` and
-   `python -m scripts.bootstrap_data` from Render Shell before serving traffic.
+   service now uses `bash scripts/start_render.sh`, which runs
+   `alembic upgrade head`, then `python -m scripts.bootstrap_data`, then
+   starts Uvicorn.
 
 2. **No `rootDir`.** `render.yaml` lives at `wcip-backend/render.yaml` but
    declared no `rootDir`. Render Blueprints run build/start commands from the
    **repository root** unless a service sets `rootDir` explicitly. With no
-   `rootDir`, `pip install -r requirements.txt` and the Uvicorn start command
+   `rootDir`, `pip install -r requirements.txt` and the start command
    would execute from the repo root, where `requirements.txt` does not exist —
    this alone is enough to make the Render build or boot fail outright.
    **Fixed:** added `rootDir: wcip-backend` to both the `wcip-api` web
@@ -158,7 +157,7 @@ regenerated an empty root lockfile.
 
 ## Files Changed
 
-- `wcip-backend/render.yaml` — direct Uvicorn start command and `rootDir: wcip-backend` on both services.
+- `wcip-backend/render.yaml` — `bash scripts/start_render.sh` and `rootDir: wcip-backend` on both services.
 - `wcip-backend/app/core/config.py` — normalizes `postgres://` → `postgresql://` in `DATABASE_URL`.
 - `wcip-backend/tests/test_config.py` — new, covers the URL normalization.
 - `package.json` / `package-lock.json` (repo root) — removed unused/misleading Next.js canary dependency block.
@@ -195,7 +194,7 @@ Service Type: Web Service
 Runtime: Python
 Root Directory: wcip-backend
 Build Command: pip install -r requirements.txt
-Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Start Command: bash scripts/start_render.sh
 Health Check Path: /health
 ```
 

@@ -26,7 +26,7 @@ The frontend must know only the backend origin through
 - Backend database env: `wcip-backend/app/core/config.py` reads `DATABASE_URL`; Alembic also reads the same setting in `wcip-backend/alembic/env.py`.
 - FastAPI entrypoint: `wcip-backend/app/main.py` defines `app = FastAPI(...)`.
 - Backend local command: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`.
-- Render backend command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+- Render backend command: `bash scripts/start_render.sh`.
 - Missing RAG import: fixed. `wcip-backend/app/models/rag.py` exists and `wcip-backend/app/models/__init__.py` imports `RagDocument`, `RagChunk`, and `RagEmbedding`.
 - Data freshness endpoint: exists at `/api/v1/data/freshness` through `wcip-backend/app/api/v1/data.py`.
 - Empty local DB behavior: fixed. Data freshness returns a partial/unavailable status and message instead of an unhandled 500 when local data is missing.
@@ -34,7 +34,7 @@ The frontend must know only the backend origin through
 - Local vs production env: separated in examples and docs. Local uses SQLite and localhost. Production should use Render PostgreSQL and a Render backend URL.
 - Auth/JWT config: backend accepts `JWT_SECRET_KEY` or `SECRET_KEY`; production validation rejects known unsafe default secrets.
 - Vercel config: frontend should use Root Directory `wcip-frontend`, framework Next.js, build command `npm run build`, output `.next`.
-- Render config: backend blueprint exists in `wcip-backend/render.yaml` and now uses the requested direct Uvicorn start command.
+- Render config: backend blueprint exists in `wcip-backend/render.yaml` and now runs migrations plus bootstrap before Uvicorn.
 
 ## Frontend API Contract
 
@@ -69,7 +69,7 @@ https://world-cup-intelligence-platform.vercel.app/api/v1/data/freshness
 - The frontend API client still carried legacy `NEXT_PUBLIC_API_BASE` and `/backend/api/v1` fallback behavior.
 - That legacy logic could mask missing environment variables and made local vs production behavior harder to reason about.
 - If someone configured `NEXT_PUBLIC_API_BASE_URL` with `/api/v1`, the app could build duplicate API prefixes.
-- The Render deployment docs and blueprint were not fully aligned with the requested direct Uvicorn start command.
+- The Render deployment docs and blueprint were not fully aligned with the migration/bootstrap/start sequence.
 - Clean local examples were needed so `.env` and `.env.local` do not drift into production settings.
 - Clean `npm ci` exposed a Recharts/Victory dependency issue and missing Recharts TypeScript declarations.
 
@@ -182,4 +182,3 @@ cd ../wcip-backend
 cd ../wcip-frontend
 npm run dev
 ```
-
