@@ -86,7 +86,7 @@ def validate() -> bool:
         all_team_names = {canonical(row.name) for row in db.scalars(select(Team)).all()}
         valid_team_names = all_team_names | wc_names
 
-        players = db.scalars(select(Player)).all()
+        players = db.scalars(select(Player).where(Player.is_active.is_(True))).all()
         coaches = db.scalars(select(Coach)).all()
     finally:
         db.close()

@@ -57,6 +57,18 @@ export function useSimulateMatch() {
   return useMutation({ mutationFn: (body: unknown) => api.simulateMatch(body) });
 }
 
+export function useHeadToHeadPrediction(
+  body: Parameters<typeof api.predictHeadToHead>[0],
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["head-to-head-prediction", body],
+    queryFn: () => api.predictHeadToHead(body),
+    enabled: enabled && !!body.home_team && !!body.away_team && body.home_team !== body.away_team,
+    staleTime: 30 * 1000,
+  });
+}
+
 export function useSimulateTournament() {
   return useMutation({ mutationFn: (body: unknown) => api.simulateTournament(body) });
 }

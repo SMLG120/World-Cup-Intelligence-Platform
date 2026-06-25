@@ -19,7 +19,12 @@ def list_players(
     q: str | None = Query(default=None, min_length=1),
     limit: int = Query(default=200, ge=1, le=1000),
 ):
-    stmt = select(Player).order_by(Player.team_name, Player.position, Player.name).limit(limit)
+    stmt = (
+        select(Player)
+        .where(Player.is_active.is_(True))
+        .order_by(Player.team_name, Player.position, Player.name)
+        .limit(limit)
+    )
     if team_name:
         stmt = stmt.where(Player.team_name == canonical(team_name))
     if q:
@@ -30,6 +35,6 @@ def list_players(
 @router.get("/{player_id}", response_model=PlayerOut)
 def get_player(player_id: int, db: DbSession):
     player = db.get(Player, player_id)
-    if not player:
+    if not player or not player.is_active:
         raise HTTPException(404, "Player not found")
     return player

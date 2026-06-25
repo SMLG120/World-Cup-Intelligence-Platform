@@ -135,6 +135,7 @@ def load_players(records: list[dict], team_name: str, data_source: str = "footba
 def _update_player(player: Player, raw: dict, team_name: str, data_source: str) -> None:
     player.team_name = team_name
     player.data_source = data_source
+    player.is_active = True
     for field in ("position", "club", "age", "nationality", "goals", "assists",
                   "xg", "xag", "minutes_played", "key_passes", "progressive_passes",
                   "progressive_carries", "tackles", "interceptions", "yellow_cards",

@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.db.base import SessionLocal
-from app.models.player import Coach, Player
+from app.models.player import Coach, Player, PlayerRatingRecord
 from app.models.team import Team
 from etl.players.fifa_squad_pdf import (
     DEFAULT_PDF_PATH,
@@ -313,14 +313,22 @@ def _upsert_players(players: list[FifaSquadPlayer], source_version: str) -> int:
             canon_team = canonical(p.team_name)
             affected_teams.add(canon_team)
             _delete_placeholder_players(db, canon_team)
-            existing = db.scalar(
-                select(Player)
-                .where(
-                    Player.team_name.in_(_team_name_variants(canon_team)),
-                    Player.name == p.player_name,
-                )
-                .limit(1)
+            external_id = _stable_player_external_id(
+                team_code=p.fifa_team_code,
+                team_name=canon_team,
+                player_name=p.player_name,
+                date_of_birth=p.dob,
             )
+            existing = db.scalar(select(Player).where(Player.external_id == external_id).limit(1))
+            if existing is None:
+                existing = db.scalar(
+                    select(Player)
+                    .where(
+                        Player.team_name.in_(_team_name_variants(canon_team)),
+                        Player.name == p.player_name,
+                    )
+                    .limit(1)
+                )
             if existing is None:
                 existing = Player(name=p.player_name, team_name=canon_team)
                 db.add(existing)
@@ -345,6 +353,8 @@ def _upsert_players(players: list[FifaSquadPlayer], source_version: str) -> int:
             existing.last_names = p.source_player_name.split()[0] if p.source_player_name else None
             existing.first_names = " ".join(p.source_player_name.split()[1:]) if p.source_player_name else None
             existing.fitness_score = 1.0
+            existing.is_active = True
+            existing.external_id = external_id
             upserted += 1
 
         _dedupe_players(db, affected_teams)
@@ -428,7 +438,7 @@ def _delete_placeholder_players(db, team_name: str) -> None:
             Player.data_source == PLACEHOLDER_SOURCE,
         )
     ).all():
-        db.delete(row)
+        row.is_active = False
 
 
 def _delete_placeholder_coach(db, team_name: str) -> None:
@@ -467,7 +477,26 @@ def _dedupe_players(db, team_names: set[str]) -> None:
             keep.team_name = canonical(keep.team_name)
             for row in duplicates:
                 if row.id != keep.id:
-                    db.delete(row)
+                    db.query(PlayerRatingRecord).filter(
+                        PlayerRatingRecord.player_id == row.id
+                    ).update(
+                        {PlayerRatingRecord.player_id: keep.id},
+                        synchronize_session=False,
+                    )
+                    row.is_active = False
+
+
+def _stable_player_external_id(
+    *,
+    team_code: str | None,
+    team_name: str,
+    player_name: str,
+    date_of_birth: str | None,
+) -> str:
+    code = (team_code or team_name).strip().upper()
+    dob = (date_of_birth or "unknown-dob").strip()
+    name = _normalised_player_key(player_name).replace(" ", "-")
+    return f"fifa-wc2026:{code}:{dob}:{name}"
 
 
 def _normalised_player_key(name: str | None) -> str:

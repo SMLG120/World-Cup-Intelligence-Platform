@@ -390,6 +390,7 @@ def _upsert_players(
         player.nationality = record.nationality
         player.external_id = record.external_id
         player.data_source = data_source
+        player.is_active = True
         player.minutes_played = record.minutes_played
         player.goals = record.goals
         player.assists = record.assists
@@ -464,12 +465,14 @@ def _skip_placeholder_player(db: Session, team_name: str, data_source: str) -> b
 
 
 def _delete_placeholder_players(db: Session, team_name: str) -> None:
-    db.execute(
-        delete(Player).where(
+    rows = db.scalars(
+        select(Player).where(
             Player.team_name == team_name,
             Player.data_source == PLACEHOLDER_DATA_SOURCE,
         )
-    )
+    ).all()
+    for row in rows:
+        row.is_active = False
 
 
 def _skip_placeholder_coach(db: Session, team_name: str, data_source: str) -> bool:

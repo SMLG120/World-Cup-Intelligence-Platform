@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useTeams, useSimulateMatch, useMLPredict } from "@/lib/queries";
-import type { MatchPrediction, HybridPrediction } from "@/lib/types";
+import { useTeams, useSimulateMatch, useMLPredict, useHeadToHeadPrediction } from "@/lib/queries";
+import type { MatchPrediction, HybridPrediction, HeadToHeadPrediction } from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
@@ -167,7 +167,11 @@ function OutcomeBar({
 // ── Model comparison bar chart ────────────────────────────────────────────────
 
 const MODEL_LABELS: Record<string, string> = {
+  elo: "Elo",
+  fifa: "FIFA",
+  player_strength: "Player Strength",
   statistical: "Statistical",
+  ml: "ML Average",
   logistic: "Logistic",
   random_forest: "Rnd Forest",
   xgboost: "XGBoost",
@@ -293,6 +297,80 @@ function XGDisplay({ home, away, home_xg, away_xg, scoreline }: {
   );
 }
 
+function LivePredictionPanel({ prediction }: { prediction: HeadToHeadPrediction }) {
+  const methods = ["ensemble", "elo", "fifa", "player_strength", "statistical", "ml"];
+  return (
+    <Card>
+      <CardHeader className="flex items-center justify-between">
+        <span className="kicker">Live head-to-head prediction</span>
+        <span className="text-xs text-muted">Method: {prediction.method_used}</span>
+      </CardHeader>
+      <CardBody className="space-y-5">
+        <OutcomeBar
+          home={prediction.home_team}
+          away={prediction.away_team}
+          home_win={prediction.probabilities.home_win}
+          draw={prediction.probabilities.draw}
+          away_win={prediction.probabilities.away_win}
+        />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3">
+            <p className="kicker">Method breakdown</p>
+            {methods
+              .filter((name) => prediction.method_breakdown[name])
+              .map((name) => (
+                <div key={name} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-fg">{MODEL_LABELS[name] ?? name}</span>
+                    <span className="text-xs text-muted">
+                      {prediction.method_weights[name] ? `${(prediction.method_weights[name] * 100).toFixed(0)}% weight` : "input signal"}
+                    </span>
+                  </div>
+                  <OutcomeBar
+                    home={prediction.home_team}
+                    away={prediction.away_team}
+                    home_win={prediction.method_breakdown[name].home_win}
+                    draw={prediction.method_breakdown[name].draw}
+                    away_win={prediction.method_breakdown[name].away_win}
+                    accentClass={name === "ensemble" ? "bg-pitch" : "bg-[hsl(200_90%_62%)]"}
+                  />
+                </div>
+              ))}
+          </div>
+          <div className="space-y-3">
+            <p className="kicker">Key factors</p>
+            {prediction.key_factors.length > 0 ? (
+              prediction.key_factors.map((factor) => (
+                <div key={factor.name} className="flex items-center justify-between border-b border-line/50 pb-2 text-xs">
+                  <div>
+                    <p className="text-fg font-medium">{factor.label}</p>
+                    <p className="text-muted">Favours {factor.favours}</p>
+                  </div>
+                  <span className="tnum text-pitch">
+                    {factor.value > 0 ? "+" : ""}{factor.value.toFixed(2)} {factor.unit}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted">Inputs are close; fallback values are being used where data is sparse.</p>
+            )}
+            <div className="grid grid-cols-2 gap-3 pt-2 text-xs">
+              <div className="rounded-md border border-line bg-elevated p-3">
+                <p className="kicker">Confidence</p>
+                <p className="tnum text-xl text-fg mt-1">{(prediction.confidence * 100).toFixed(0)}%</p>
+              </div>
+              <div className="rounded-md border border-line bg-elevated p-3">
+                <p className="kicker">Model version</p>
+                <p className="text-xs text-fg mt-1 break-words">{prediction.model_version}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PredictPage() {
@@ -310,8 +388,7 @@ export default function PredictPage() {
 
   const statMutation = useSimulateMatch();
   const mlMutation = useMLPredict();
-
-  const busy = statMutation.isPending || mlMutation.isPending;
+  const isInvalid = home === away || !home || !away;
 
   function buildHomeOverrides() {
     const o: Record<string, number> = {};
@@ -328,6 +405,24 @@ export default function PredictPage() {
     if (awayOverrides.coach_impact !== 1.0) o.coach_impact = awayOverrides.coach_impact;
     return Object.keys(o).length ? o : undefined;
   }
+
+  const h2hBody = useMemo(() => ({
+    home_team: home,
+    away_team: away,
+    home_overrides: buildHomeOverrides(),
+    away_overrides: buildAwayOverrides(),
+    include_shap: false,
+  }), [home, away, homeOverrides, awayOverrides]);
+  const h2hQuery = useHeadToHeadPrediction(h2hBody, !isInvalid);
+  const liveResult = h2hQuery.data ?? null;
+  const busy = statMutation.isPending || mlMutation.isPending;
+  const primaryLoading = h2hQuery.isLoading || h2hQuery.isFetching;
+
+  useEffect(() => {
+    setStatResult(null);
+    setHybridResult(null);
+    setActiveMode(null);
+  }, [home, away]);
 
   async function runStatistical() {
     setActiveMode("stat");
@@ -375,8 +470,6 @@ export default function PredictPage() {
       include_shap: true,
     }, { onSuccess: (r) => setHybridResult(r) });
   }
-
-  const isInvalid = home === away || !home || !away;
 
   return (
     <div className="space-y-8">
@@ -478,9 +571,12 @@ export default function PredictPage() {
       {mlMutation.isError && (
         <p className="text-signal text-sm">{(mlMutation.error as Error).message}</p>
       )}
+      {h2hQuery.isError && (
+        <p className="text-signal text-sm">{(h2hQuery.error as Error).message}</p>
+      )}
 
       {/* Loading skeletons */}
-      {busy && (
+      {(busy || primaryLoading) && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Skeleton className="h-48" />
           <Skeleton className="h-48" />
@@ -488,7 +584,7 @@ export default function PredictPage() {
       )}
 
       <AnimatePresence>
-        {(statResult || hybridResult) && !busy && (
+        {(liveResult || statResult || hybridResult) && !busy && !primaryLoading && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -501,7 +597,14 @@ export default function PredictPage() {
                 <span className="text-muted mx-3 text-2xl">vs</span>
                 {away}
               </div>
-              {hybridResult && (
+              {liveResult ? (
+                <XGDisplay
+                  home={home} away={away}
+                  home_xg={liveResult.expected_score.home_xg}
+                  away_xg={liveResult.expected_score.away_xg}
+                  scoreline={liveResult.expected_score.scoreline}
+                />
+              ) : hybridResult && (
                 <XGDisplay
                   home={home} away={away}
                   home_xg={hybridResult.home_xg}
@@ -509,13 +612,13 @@ export default function PredictPage() {
                   scoreline={hybridResult.expected_scoreline}
                 />
               )}
-              {hybridResult && (
+              {(liveResult || hybridResult) && (
                 <div className="flex justify-center gap-6 mt-3 text-xs text-muted">
                   <span>
-                    Confidence: <span className="text-fg tnum">{(hybridResult.confidence_score * 100).toFixed(0)}%</span>
+                    Confidence: <span className="text-fg tnum">{((liveResult?.confidence ?? hybridResult?.confidence_score ?? 0) * 100).toFixed(0)}%</span>
                   </span>
                   <span>
-                    Model agreement: <span className="text-fg tnum">{(hybridResult.model_agreement * 100).toFixed(0)}%</span>
+                    Model agreement: <span className="text-fg tnum">{((liveResult?.model_agreement ?? hybridResult?.model_agreement ?? 0) * 100).toFixed(0)}%</span>
                   </span>
                 </div>
               )}
@@ -529,7 +632,7 @@ export default function PredictPage() {
                     home_overrides: homeOverrides,
                     away_overrides: awayOverrides,
                   }}
-                  statisticalResult={statResult ?? hybridResult?.statistical}
+                  statisticalResult={statResult ?? liveResult?.method_breakdown.statistical ?? hybridResult?.statistical}
                   mlResult={hybridResult}
                   ensembleResult={hybridResult?.ensemble}
                   result={{
@@ -545,6 +648,8 @@ export default function PredictPage() {
                 </Link>
               </div>
             </div>
+
+            {liveResult && <LivePredictionPanel prediction={liveResult} />}
 
             {/* Three-layer comparison */}
             <Card>

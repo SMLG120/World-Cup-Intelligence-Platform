@@ -300,7 +300,10 @@ def _get_player_data_freshness(team_names: list[str]) -> str | None:
         db = SessionLocal()
         try:
             latest = db.scalar(
-                select(func.max(Player.updated_at)).where(Player.team_name.in_(team_names))
+                select(func.max(Player.updated_at)).where(
+                    Player.team_name.in_(team_names),
+                    Player.is_active.is_(True),
+                )
             )
             return latest.isoformat() if latest else None
         finally:
@@ -483,7 +486,10 @@ def _get_squad_stats(team_name: str) -> Dict[str, float]:
         db = SessionLocal()
         try:
             rows = db.scalars(
-                select(Player).where(Player.team_name == team_name)
+                select(Player).where(
+                    Player.team_name == team_name,
+                    Player.is_active.is_(True),
+                )
             ).all()
             if not rows:
                 return {
@@ -583,7 +589,12 @@ def _get_player_strength_stats(team_name: str) -> Dict[str, float]:
         from app.models.player import Player
         db = SessionLocal()
         try:
-            rows = db.scalars(select(Player).where(Player.team_name == team_name)).all()
+            rows = db.scalars(
+                select(Player).where(
+                    Player.team_name == team_name,
+                    Player.is_active.is_(True),
+                )
+            ).all()
         finally:
             db.close()
     except Exception as exc:

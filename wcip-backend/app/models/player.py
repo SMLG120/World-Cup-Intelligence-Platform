@@ -59,6 +59,7 @@ class Player(Base):
     # Status
     injured: Mapped[bool] = mapped_column(Boolean, default=False)
     suspended: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     injury_notes: Mapped[str | None] = mapped_column(Text)
     profile_description: Mapped[str | None] = mapped_column(Text)
 

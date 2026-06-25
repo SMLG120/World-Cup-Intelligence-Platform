@@ -27,7 +27,10 @@ def validate_player_ratings() -> dict[str, Any]:
         ).all()
         rated_rows = db.scalars(
             select(Player.team_name)
-            .where(Player.player_rating.is_not(None))
+            .where(
+                Player.is_active.is_(True),
+                Player.player_rating.is_not(None),
+            )
         ).all()
         rated_by_team = Counter(rated_rows)
         missing = [team for team in wc_teams if rated_by_team[team] == 0]
@@ -37,7 +40,10 @@ def validate_player_ratings() -> dict[str, Any]:
             .limit(1)
         )
         total_rated_players = db.scalar(
-            select(func.count()).select_from(Player).where(Player.player_rating.is_not(None))
+            select(func.count()).select_from(Player).where(
+                Player.is_active.is_(True),
+                Player.player_rating.is_not(None),
+            )
         ) or 0
         rating_records = db.scalar(select(func.count()).select_from(PlayerRatingRecord)) or 0
 

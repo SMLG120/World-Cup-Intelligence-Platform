@@ -392,6 +392,35 @@ For a match prediction:
 4. Win/draw/loss probabilities are calculated.
 5. The response includes probabilities, xG, and explanation factors.
 
+For dynamic head-to-head prediction:
+
+1. `POST /api/v1/match/predict` accepts `home_team`, `away_team`, optional
+   `match_date`, and optional team overrides.
+2. `app/services/head_to_head_prediction.py` normalizes the team names and
+   calls the hybrid feature/model pipeline instead of returning fixture mocks.
+3. The response includes separate method outputs for Elo, FIFA ranking,
+   player-strength comparison, statistical prediction, ML average, and the
+   final ensemble.
+4. Elo features come from World Football Elo snapshots or team fallback Elo.
+   FIFA rank features come from FIFA ranking snapshots or team fallback ranks.
+   Player/team strength comes from active squad rows imported from the FIFA
+   squad PDF and rating CSV. ML predictions use the registered model artifacts
+   and the `ml/features.py` feature vector.
+5. The frontend `/predict` page calls this endpoint through
+   `useHeadToHeadPrediction`, so probabilities, expected score, key factors,
+   confidence, model version, and method breakdown update whenever either team
+   or advanced override changes.
+
+Local prediction checks:
+
+```bash
+cd wcip-backend
+.venv/bin/pytest -q tests/test_head_to_head_prediction.py
+curl -X POST http://localhost:8000/api/v1/match/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"home_team":"Mexico","away_team":"Czechia"}'
+```
+
 For tournament simulation:
 
 1. The API receives an edition and run count.
@@ -536,6 +565,7 @@ All backend API routes use the `/api/v1` prefix.
 | `GET` | `/players` | Player registry with team/search filters |
 | `GET` | `/players/{id}` | Player detail |
 | `POST` | `/match/simulate` | Single-match statistical prediction |
+| `POST` | `/match/predict` | Dynamic head-to-head prediction with Elo, FIFA, player-strength, ML, and ensemble breakdown |
 | `POST` | `/tournament/simulate` | Monte Carlo tournament simulation |
 | `POST` | `/scenario/compare` | Compare 2-3 scenarios |
 | `GET` | `/editions` | Available tournament editions |
@@ -753,6 +783,45 @@ Couldn't find any `pages` or `app` directory
 
 then Vercel is building from the wrong folder. Set the Vercel Root Directory to
 `wcip-frontend`. Do not create a fake root-level `app/` directory.
+
+### Backend Deployment On Render
+
+Use `wcip-backend` as the service root. The start script runs migrations first,
+then the idempotent local-data bootstrap, then Uvicorn:
+
+```bash
+./scripts/start_render.sh
+```
+
+The underlying commands are:
+
+```bash
+alembic upgrade head
+python -m scripts.bootstrap_data
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Set `BOOTSTRAP_DATA_ON_START=false` only if you want Render to skip bootstrap
+on a restart and run it manually from a one-off shell. The bootstrap upserts
+teams, active players, coaches, ratings, historical matches, model metadata,
+and freshness inputs; it does not delete players referenced by
+`player_rating_records`.
+
+Production verification:
+
+```bash
+curl https://YOUR_RENDER_BACKEND/health
+curl https://YOUR_RENDER_BACKEND/api/v1/data/freshness
+curl -X POST https://YOUR_RENDER_BACKEND/api/v1/match/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"home_team":"Mexico","away_team":"Czechia"}'
+```
+
+After Vercel is pointed at the Render origin with
+`NEXT_PUBLIC_API_BASE_URL=https://YOUR_RENDER_BACKEND`, open `/predict` and
+change either selected team. The live head-to-head panel should refetch and show
+new probabilities, expected score, method breakdown, key factors, confidence,
+and model version.
 
 ### Full Stack With Docker
 

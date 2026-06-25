@@ -239,6 +239,37 @@ export interface HybridPrediction {
   explanation: PredictionExplanation;
 }
 
+export interface HeadToHeadPrediction {
+  home_team: string;
+  away_team: string;
+  match_date: string;
+  method_used: string;
+  probabilities: MLOutcome;
+  expected_score: {
+    home_xg: number;
+    away_xg: number;
+    scoreline: string;
+  };
+  confidence: number;
+  model_version: string;
+  feature_snapshot: {
+    features: Record<string, number>;
+    data_snapshot: Record<string, unknown>;
+  };
+  method_breakdown: Record<string, MLOutcome>;
+  method_weights: Record<string, number>;
+  model_agreement: number;
+  key_factors: Array<{
+    name: string;
+    label: string;
+    value: number;
+    unit: string;
+    favours: string;
+    impact: number;
+  }>;
+  explanation?: PredictionExplanation;
+}
+
 export interface MLModel {
   id: number;
   model_name: string;

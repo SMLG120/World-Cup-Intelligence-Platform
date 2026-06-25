@@ -224,7 +224,7 @@ def _check_elo(report: ValidationReport, db, teams: list[Team]) -> None:
 
 
 def _check_players_and_coaches(report: ValidationReport, db, qualified_names: set[str]) -> None:
-    player_rows = db.scalars(select(Player)).all()
+    player_rows = db.scalars(select(Player).where(Player.is_active.is_(True))).all()
     player_teams = {player.team_name for player in player_rows}
     missing_player_teams = sorted(qualified_names - player_teams)
     if missing_player_teams:
@@ -239,6 +239,7 @@ def _check_players_and_coaches(report: ValidationReport, db, qualified_names: se
 
     duplicate_players = db.execute(
         select(Player.team_name, Player.name, func.count())
+        .where(Player.is_active.is_(True))
         .group_by(Player.team_name, Player.name)
         .having(func.count() > 1)
     ).all()
@@ -252,7 +253,12 @@ def _check_players_and_coaches(report: ValidationReport, db, qualified_names: se
     else:
         report.pass_("duplicate_players", "No duplicate players found within teams.")
 
-    rated_count = db.scalar(select(func.count()).select_from(Player).where(Player.player_rating.is_not(None))) or 0
+    rated_count = db.scalar(
+        select(func.count()).select_from(Player).where(
+            Player.is_active.is_(True),
+            Player.player_rating.is_not(None),
+        )
+    ) or 0
     if player_rows and rated_count / len(player_rows) < 0.60:
         report.fail(
             "player_ratings",
@@ -263,7 +269,12 @@ def _check_players_and_coaches(report: ValidationReport, db, qualified_names: se
     else:
         report.pass_("player_ratings", "Player ratings coverage is acceptable.", rated=rated_count, total=len(player_rows))
 
-    market_count = db.scalar(select(func.count()).select_from(Player).where(Player.market_value_eur.is_not(None))) or 0
+    market_count = db.scalar(
+        select(func.count()).select_from(Player).where(
+            Player.is_active.is_(True),
+            Player.market_value_eur.is_not(None),
+        )
+    ) or 0
     if player_rows and market_count / len(player_rows) < 0.60:
         report.warn(
             "squad_market_values",

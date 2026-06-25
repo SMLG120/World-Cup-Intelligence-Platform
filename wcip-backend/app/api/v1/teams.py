@@ -31,7 +31,9 @@ def _team_metadata(db: DbSession) -> dict[str, dict]:
     }
     counts: dict[str, int] = {}
     for team_name, count in db.execute(
-        select(Player.team_name, func.count(Player.id)).group_by(Player.team_name)
+        select(Player.team_name, func.count(Player.id))
+        .where(Player.is_active.is_(True))
+        .group_by(Player.team_name)
     ).all():
         canon = canonical(team_name)
         counts[canon] = counts.get(canon, 0) + int(count or 0)
@@ -196,7 +198,10 @@ def _team_player_rows(
     team_names = _team_name_variants(team.name)
     stmt = (
         select(Player)
-        .where(Player.team_name.in_(team_names))
+        .where(
+            Player.team_name.in_(team_names),
+            Player.is_active.is_(True),
+        )
         .order_by(Player.position, Player.name)
     )
     if position:
@@ -242,7 +247,10 @@ def squad_strength(team_id: int, db: DbSession):
         raise HTTPException(404, "Team not found")
     strength = _get_player_strength_stats(team.name)
     player_count = db.scalar(
-        select(func.count(Player.id)).where(Player.team_name == team.name)
+        select(func.count(Player.id)).where(
+            Player.team_name == team.name,
+            Player.is_active.is_(True),
+        )
     ) or 0
     return {
         "team_id": team_id,

@@ -806,7 +806,12 @@ def get_team_detail(team_name: str) -> Dict[str, Any]:
         team = db.scalar(select(Team).where(Team.name == canon))
         team_names = _team_name_variants(canon)
         coach = db.scalar(select(Coach).where(Coach.team_name.in_(team_names)))
-        players = db.scalars(select(Player).where(Player.team_name.in_(team_names))).all()
+        players = db.scalars(
+            select(Player).where(
+                Player.team_name.in_(team_names),
+                Player.is_active.is_(True),
+            )
+        ).all()
 
         squad_stats = _get_squad_stats(canon)
 
@@ -848,7 +853,10 @@ def get_team_players(team_name: str) -> Dict[str, Any]:
     db = SessionLocal()
     try:
         players = db.scalars(
-            select(Player).where(Player.team_name.in_(_team_name_variants(canon)))
+            select(Player).where(
+                Player.team_name.in_(_team_name_variants(canon)),
+                Player.is_active.is_(True),
+            )
         ).all()
 
         return {

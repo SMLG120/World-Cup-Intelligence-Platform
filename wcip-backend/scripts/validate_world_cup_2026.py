@@ -47,7 +47,7 @@ def main() -> int:
             select(QualifiedTeam).where(QualifiedTeam.tournament_year == 2026)
         ).all()
         teams = db.scalars(select(Team)).all()
-        players = db.scalars(select(Player)).all()
+        players = db.scalars(select(Player).where(Player.is_active.is_(True))).all()
         coaches = db.scalars(select(Coach)).all()
 
         qualified_names = [team.team_name for team in qualified]

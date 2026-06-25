@@ -9,6 +9,7 @@ import type {
   WC2026Groups, WC2026Simulation, TeamDetail, Player, TeamSquad,
   WorldCupWinnerPrediction, DataFreshness, LatestEloSnapshot,
   PredictionMode, RagAnswer, RagAskRequest, RagIndexStatus, RagDocumentSummary,
+  HeadToHeadPrediction,
 } from "./types";
 
 export interface ApiConfigIssue {
@@ -253,6 +254,14 @@ export const api = {
   // --- predictions ---
   simulateMatch: (body: unknown) =>
     request<MatchPrediction>("/match/simulate", { method: "POST", body }),
+  predictHeadToHead: (body: {
+    home_team: string;
+    away_team: string;
+    match_date?: string;
+    home_overrides?: Record<string, number>;
+    away_overrides?: Record<string, number>;
+    include_shap?: boolean;
+  }) => request<HeadToHeadPrediction>("/match/predict", { method: "POST", body }),
   simulateTournament: (body: unknown) =>
     request<TournamentResult>("/tournament/simulate", { method: "POST", body }),
   compareScenarios: (body: unknown) =>

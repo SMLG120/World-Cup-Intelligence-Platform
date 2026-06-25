@@ -203,7 +203,9 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         .order_by(QualifiedTeam.team_name)
     ).all()
     team_count = len(wc_team_names)
-    player_count = db.scalar(select(func.count()).select_from(Player)) or 0
+    player_count = db.scalar(
+        select(func.count()).select_from(Player).where(Player.is_active.is_(True))
+    ) or 0
     coach_count = db.scalar(select(func.count()).select_from(Coach)) or 0
     match_count = db.scalar(select(func.count()).select_from(MatchResult)) or 0
     model_count = db.scalar(
@@ -220,7 +222,10 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
     )
     fifa_rows = fifa.team_count if fifa else 0
     rated_player_count = db.scalar(
-        select(func.count()).select_from(Player).where(Player.player_rating.is_not(None))
+        select(func.count()).select_from(Player).where(
+            Player.is_active.is_(True),
+            Player.player_rating.is_not(None),
+        )
     ) or 0
 
     missing_rating_teams: list[str] = []
@@ -228,7 +233,11 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         rated_for_team = db.scalar(
             select(func.count())
             .select_from(Player)
-            .where(Player.team_name == team_name, Player.player_rating.is_not(None))
+            .where(
+                Player.team_name == team_name,
+                Player.is_active.is_(True),
+                Player.player_rating.is_not(None),
+            )
         ) or 0
         if rated_for_team == 0:
             missing_rating_teams.append(team_name)

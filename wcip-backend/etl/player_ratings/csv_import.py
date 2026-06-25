@@ -9,12 +9,13 @@ import csv
 import hashlib
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app.core.cache import cache
 from app.db.base import SessionLocal
@@ -116,12 +117,13 @@ def import_player_ratings_csv(
                 touched_teams.add(parsed.team_name)
 
         if touched_teams:
-            db.execute(
-                delete(Player).where(
+            for placeholder in db.scalars(
+                select(Player).where(
                     Player.team_name.in_(touched_teams),
                     Player.data_source == PLACEHOLDER_SOURCE,
                 )
-            )
+            ).all():
+                placeholder.is_active = False
 
         batch.status = "success"
         batch.row_count = row_count
@@ -208,12 +210,17 @@ def _upsert_player(
     source_version: str,
     imported_at: datetime,
 ) -> Player:
-    player = db.scalar(
-        select(Player).where(
-            Player.team_name == row.team_name,
-            Player.name == row.player_name,
+    external_id = _stable_player_external_id(row)
+    player = None
+    if external_id:
+        player = db.scalar(select(Player).where(Player.external_id == external_id))
+    if player is None:
+        player = db.scalar(
+            select(Player).where(
+                Player.team_name == row.team_name,
+                Player.name == row.player_name,
+            )
         )
-    )
     if not player:
         player = Player(
             name=row.player_name,
@@ -222,6 +229,10 @@ def _upsert_player(
         )
         db.add(player)
 
+    player.name = row.player_name
+    player.team_name = row.team_name
+    player.external_id = external_id or player.external_id
+    player.is_active = True
     player.position = row.position or player.position
     player.club = row.club
     player.age = row.age
@@ -246,6 +257,16 @@ def _upsert_player(
     player.data_source = source_name
     player.profile_description = build_player_profile(player)
     return player
+
+
+def _stable_player_external_id(row: PlayerRatingRow) -> str | None:
+    dob = _text(row.raw, "date_of_birth", "dob", "birth_date")
+    team_code = _text(row.raw, "fifa_team_code", "team_code", "country_code")
+    if not dob and not team_code:
+        return None
+    code = (team_code or row.team_name).strip().upper()
+    name = re.sub(r"\s+", "-", row.player_name.strip().lower())
+    return f"player-rating:{code}:{dob or 'unknown-dob'}:{name}"
 
 
 def _text(raw: dict[str, Any], *keys: str, default: str = "") -> str:

@@ -221,7 +221,11 @@ def _player_ratings_already_loaded() -> bool:
             rated_for_team = db.scalar(
                 select(func.count())
                 .select_from(Player)
-                .where(Player.team_name == team_name, Player.player_rating.is_not(None))
+                .where(
+                    Player.team_name == team_name,
+                    Player.is_active.is_(True),
+                    Player.player_rating.is_not(None),
+                )
             ) or 0
             if rated_for_team:
                 rated_team_count += 1

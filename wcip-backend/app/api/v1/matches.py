@@ -3,16 +3,29 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.core.cache import cache
+from app.services.head_to_head_prediction import predict_head_to_head
 from app.services import prediction
 from app.schemas.domain import (MatchPrediction, MatchRequest,
                                 TournamentRequest)
 from etl.transform.normalize import canonical
 
 router = APIRouter(tags=["predictions"])
+
+
+class HeadToHeadPredictionRequest(BaseModel):
+    home_team: str = Field(min_length=1)
+    away_team: str = Field(min_length=1)
+    match_date: date | None = None
+    home_overrides: dict[str, Any] | None = None
+    away_overrides: dict[str, Any] | None = None
+    include_shap: bool = False
 
 
 def _hash(payload: dict) -> str:
@@ -39,6 +52,22 @@ def simulate_match(req: MatchRequest):
         raise HTTPException(404, f"Unknown team: {exc}")
     cache.set_json(key, result)
     return result
+
+
+@router.post("/match/predict")
+def predict_match_head_to_head(req: HeadToHeadPredictionRequest):
+    home = canonical(req.home_team)
+    away = canonical(req.away_team)
+    if home == away:
+        raise HTTPException(400, "home_team and away_team must be different")
+    return predict_head_to_head(
+        home_team=home,
+        away_team=away,
+        match_date=req.match_date,
+        home_overrides=req.home_overrides,
+        away_overrides=req.away_overrides,
+        include_shap=req.include_shap,
+    )
 
 
 @router.post("/tournament/simulate")
