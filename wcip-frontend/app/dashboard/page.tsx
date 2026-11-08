@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -10,8 +11,14 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { DataFreshnessStrip } from "@/components/data-freshness";
+
+// Loaded as its own chunk so the charting library stays out of the
+// dashboard's first-load JavaScript.
+const WinnerPredictionsSection = dynamic(
+  () => import("@/components/winner-predictions-section").then((m) => m.WinnerPredictionsSection),
+  { loading: () => <Skeleton className="h-64 w-full" /> },
+);
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();

@@ -75,6 +75,17 @@ NAME_MAP: Dict[str, str] = {
     "Türkiye": "Turkey",
     "Turkiye": "Turkey",
 
+    # ── China PR ─────────────────────────────────────────────────────────────
+    # FIFA's official name. martj42 results renamed "China PR" -> "China" in
+    # 2026 and eloratings.net uses "China"; without this mapping a full
+    # results re-sync duplicated every historical China match.
+    "China": "China PR",
+    "PR China": "China PR",
+    "CHN": "China PR",
+
+    # ── Ticino (non-FIFA) ────────────────────────────────────────────────────
+    "Canton Ticino": "Ticino",
+
     # ── Iran ─────────────────────────────────────────────────────────────────
     "IR Iran": "Iran",
     "Islamic Republic of Iran": "Iran",

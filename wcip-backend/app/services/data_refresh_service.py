@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable
 
 from sqlalchemy import func, select
@@ -17,6 +17,12 @@ from app.models.team import EloRatingSnapshot, EloSourceLog, TeamEloRating
 from ml.features import FEATURE_VERSION
 
 logger = logging.getLogger(__name__)
+
+# FIFA publishes on a fixed schedule (``next_update_at``); allow a day for the
+# daily sync to pick a release up before flagging the snapshot as stale.
+FIFA_STALE_GRACE = timedelta(days=1)
+# Elo ratings move after every international window; the sync runs daily.
+ELO_STALE_DAYS = 14
 
 
 def refresh_elo_ratings() -> dict[str, Any]:
@@ -39,7 +45,9 @@ def refresh_world_cup_results() -> dict[str, Any]:
 
     return _run_refresh(
         "refresh_world_cup_results",
-        lambda: {"inserted": run_historical_results(force_refresh=False)},
+        # force_refresh downloads the upstream CSV; with False the committed
+        # cache was re-read forever and new results never arrived.
+        lambda: {"inserted": run_historical_results(force_refresh=True)},
     )
 
 
@@ -228,19 +236,20 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         )
     ) or 0
 
-    missing_rating_teams: list[str] = []
-    for team_name in wc_team_names:
-        rated_for_team = db.scalar(
-            select(func.count())
-            .select_from(Player)
+    # One grouped query instead of one COUNT per qualified team (48 round
+    # trips on every /data/freshness call).
+    rated_teams = set(
+        db.scalars(
+            select(Player.team_name)
             .where(
-                Player.team_name == team_name,
+                Player.team_name.in_(wc_team_names),
                 Player.is_active.is_(True),
                 Player.player_rating.is_not(None),
             )
-        ) or 0
-        if rated_for_team == 0:
-            missing_rating_teams.append(team_name)
+            .group_by(Player.team_name)
+        ).all()
+    ) if wc_team_names else set()
+    missing_rating_teams = [name for name in wc_team_names if name not in rated_teams]
 
     snapshot_parts = [
         f"elo:{elo.data_version}" if elo else "elo:none",
@@ -258,6 +267,28 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
         model.trained_at if model else None,
     )
     warnings: list[str] = []
+    now = datetime.now(timezone.utc)
+    fifa_next = _as_datetime(fifa.next_update_at) if fifa else None
+    fifa_stale = bool(fifa_next and now > fifa_next + FIFA_STALE_GRACE)
+    if fifa_stale:
+        warnings.append(
+            f"FIFA ranking {fifa.ranking_id} ({fifa.ranking_date.isoformat()}) is past its "
+            f"scheduled next release ({fifa_next.date().isoformat()}); the data sync has not "
+            "loaded a newer release."
+        )
+    elo_age_days = (date.today() - elo.rating_date).days if elo else None
+    elo_stale = elo_age_days is not None and elo_age_days > ELO_STALE_DAYS
+    if elo_stale:
+        warnings.append(
+            f"Elo snapshot is {elo_age_days} days old ({elo.rating_date.isoformat()}); "
+            f"expected a refresh at least every {ELO_STALE_DAYS} days."
+        )
+    last_fifa_success_at = db.scalar(
+        select(func.max(RankingSourceLog.completed_at)).where(RankingSourceLog.status == "success")
+    )
+    last_elo_success_at = db.scalar(
+        select(func.max(EloSourceLog.completed_at)).where(EloSourceLog.status == "success")
+    )
     if missing_rating_teams:
         sample = ", ".join(missing_rating_teams[:8])
         suffix = "" if len(missing_rating_teams) <= 8 else f", and {len(missing_rating_teams) - 8} more"
@@ -267,7 +298,10 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
 
     source_status = {
         "elo": {
-            "status": "available" if elo else "missing",
+            "status": ("stale" if elo_stale else "available") if elo else "missing",
+            "data_kind": "third_party_rating",
+            "fetched_at": _iso(elo.created_at) if elo else None,
+            "last_successful_sync_at": _iso(last_elo_success_at),
             "source_name": getattr(last_elo_log, "source_name", None) if last_elo_log else "World Football Elo",
             "source_date": elo.rating_date.isoformat() if elo else None,
             "source_url": elo.source_url if elo else None,
@@ -276,7 +310,12 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
             "last_run_status": _log_status(last_elo_log),
         },
         "fifa_rankings": {
-            "status": "available" if fifa else "missing",
+            "status": ("stale" if fifa_stale else "available") if fifa else "missing",
+            "data_kind": "official",
+            "source_published_at": _iso(fifa.published_at) if fifa else None,
+            "next_update_at": _iso(fifa.next_update_at) if fifa else None,
+            "fetched_at": _iso(fifa.created_at) if fifa else None,
+            "last_successful_sync_at": _iso(last_fifa_success_at),
             "source_name": getattr(last_fifa_log, "source_name", None) if last_fifa_log else "FIFA",
             "source_date": fifa.ranking_date.isoformat() if fifa else None,
             "source_url": fifa.source_url if fifa else None,
@@ -322,7 +361,7 @@ def get_data_freshness_from_db(db: Session) -> dict[str, Any]:
             ("matches", source_status["matches"]),
             ("models", source_status["models"]),
         )
-        if source["status"] in {"missing", "partial"}
+        if source["status"] in {"missing", "partial", "stale"}
     ]
     has_any_freshness = any((elo, fifa, match_updated, player_timestamp, model))
     status = "available" if not missing_sources and not warnings else "partial"

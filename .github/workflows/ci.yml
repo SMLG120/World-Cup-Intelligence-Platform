@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend tests (Python 3.12, SQLite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wcip-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # matches the Render runtime
+          cache: pip
+          cache-dependency-path: wcip-backend/requirements.txt
+      - run: pip install -r requirements.txt pytest httpx
+      - run: python -m pytest -q -p no:warnings
+
+  backend-postgres:
+    # SQLite ignores VARCHAR lengths and some constraint behaviour; production
+    # is Supabase Postgres. This job is what catches those differences.
+    name: Migrations + bootstrap on Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wcip
+          POSTGRES_PASSWORD: wcip
+          POSTGRES_DB: wcip
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wcip" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg2://wcip:wcip@localhost:5432/wcip
+    defaults:
+      run:
+        working-directory: wcip-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: wcip-backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Migrations are reversible
+        run: |
+          alembic upgrade head
+          alembic downgrade -1
+          alembic upgrade head
+      - name: Bootstrap from committed snapshots (no provider calls)
+        run: python -m scripts.bootstrap_data --skip-network
+      - name: Bootstrap is idempotent
+        run: python -m scripts.bootstrap_data --skip-network
+
+  frontend:
+    name: Frontend typecheck, lint, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wcip-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: wcip-frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx eslint .
+      - run: npm run vercel-build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://wcip-api.example.invalid
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: npm (fail on critical)
+        working-directory: wcip-frontend
+        run: npm audit --omit=dev --audit-level=critical
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit (report)
+        working-directory: wcip-backend
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt || echo "::warning::pip-audit reported vulnerabilities"

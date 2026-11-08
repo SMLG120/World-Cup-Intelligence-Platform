@@ -5,7 +5,7 @@ All loaders are idempotent (upsert semantics) and support incremental runs.
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterator
 
 from sqlalchemy import select
@@ -20,27 +20,67 @@ from etl.validation.schema import ValidatedMatch
 logger = logging.getLogger(__name__)
 
 
-def load_match_results(records: Iterator[ValidatedMatch], batch_size: int = 500) -> int:
-    """Upsert match results. Returns total rows inserted."""
+class SuspiciousBackfillError(RuntimeError):
+    """A sync tried to insert many old matches into an already-full table."""
+
+
+# Once full history is stored, legitimate syncs add recent matches; a burst of
+# year-old "new" rows almost always means the upstream source renamed a team,
+# and inserting them would duplicate history under the new name.
+BACKFILL_GUARD_MIN_EXISTING = 40_000
+BACKFILL_GUARD_MAX_OLD_INSERTS = 50
+
+
+def load_match_results(
+    records: Iterator[ValidatedMatch],
+    batch_size: int = 500,
+    *,
+    guard_backfill: bool = False,
+) -> int:
+    """Upsert match results. Returns total rows inserted.
+
+    Existing ``(home_team, away_team, match_date)`` keys are preloaded in one
+    query for the incoming date range instead of one SELECT per CSV row; on a
+    remote Postgres a full 49k-row load previously cost 49k round trips.
+    """
     db: Session = SessionLocal()
     inserted = 0
     batch: list[MatchResult] = []
-    seen: set[tuple] = set()  # deduplicate within this run (CSV may have duplicate rows)
+    records = list(records)
+    if not records:
+        db.close()
+        logger.info("Total match results loaded: 0")
+        return 0
+    min_date = min(rec.match_date for rec in records)
+    seen: set[tuple] = {
+        (home, away, match_date)
+        for home, away, match_date in db.execute(
+            select(MatchResult.home_team, MatchResult.away_team, MatchResult.match_date)
+            .where(MatchResult.match_date >= min_date)
+        )
+    }
+    if guard_backfill and len(seen) >= BACKFILL_GUARD_MIN_EXISTING:
+        cutoff = date.today() - timedelta(days=365)
+        old_new = {
+            (rec.home_team, rec.away_team, rec.match_date)
+            for rec in records
+            if rec.match_date < cutoff and (rec.home_team, rec.away_team, rec.match_date) not in seen
+        }
+        if len(old_new) > BACKFILL_GUARD_MAX_OLD_INSERTS:
+            db.close()
+            known = {team for key in seen for team in key[:2]}
+            unknown = sorted({team for key in old_new for team in key[:2]} - known)
+            raise SuspiciousBackfillError(
+                f"Refusing to insert {len(old_new)} matches older than {cutoff} into a table "
+                f"with {len(seen)} rows; the source probably renamed teams. Team names not "
+                f"in the database: {unknown[:10]}. Map them in etl/transform/normalize.py NAME_MAP."
+            )
     try:
         for rec in records:
             key = (rec.home_team, rec.away_team, rec.match_date)
-            if key in seen:
+            if key in seen:  # already stored, or duplicate row within this CSV
                 continue
             seen.add(key)
-            exists = db.scalar(
-                select(MatchResult.id).where(
-                    MatchResult.home_team == rec.home_team,
-                    MatchResult.away_team == rec.away_team,
-                    MatchResult.match_date == rec.match_date,
-                )
-            )
-            if exists:
-                continue
             batch.append(MatchResult(
                 match_date=rec.match_date,
                 home_team=rec.home_team,

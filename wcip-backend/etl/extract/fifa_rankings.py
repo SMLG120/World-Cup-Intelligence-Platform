@@ -21,13 +21,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable
 
-import httpx
-
+from etl.extract.http import get_with_retries
 from etl.transform.normalize import canonical
 
 logger = logging.getLogger(__name__)
 
-FIFA_RANKING_PAGE_URL = "https://inside.fifa.com/fifa-world-ranking/men"
+FIFA_RANKING_PAGE_URL = "https://inside.fifa.com/fifa-rankings/world-ranking/men"
 FIFA_RANKINGS_API_URL = (
     "https://api.fifa.com/api/v3/fifarankings/rankings/rankingsbyschedule"
 )
@@ -102,6 +101,29 @@ def fetch_fifa_ranking_snapshot(
     validate_ranking_snapshot(snapshot, min_entries=min_entries)
     _write_cached_snapshot(snapshot)
     return snapshot
+
+
+@dataclass(frozen=True)
+class LatestRankingInfo:
+    ranking_id: str
+    published_at: datetime | None
+    next_update_at: datetime | None
+
+
+def fetch_latest_ranking_info(*, language: str = DEFAULT_LANGUAGE) -> LatestRankingInfo:
+    """Return the newest published ranking id without downloading its table.
+
+    One request to the public ranking page. The sync job uses this to skip the
+    full payload download when FIFA has not published a new release.
+    """
+
+    metadata = _fetch_ranking_metadata(language=language)
+    selected = _select_ranking_date(metadata, None)
+    return LatestRankingInfo(
+        ranking_id=str(selected["id"]),
+        published_at=_parse_datetime(selected.get("iso")),
+        next_update_at=_parse_datetime(metadata.get("next_update_at")),
+    )
 
 
 def fetch_fifa_rankings(force_refresh: bool = False) -> Dict[str, int]:
@@ -197,8 +219,7 @@ def snapshot_from_dict(payload: dict[str, Any]) -> RankingSnapshot:
 
 def _fetch_ranking_metadata(*, language: str) -> dict[str, Any]:
     params = {"language": language}
-    response = httpx.get(FIFA_RANKING_PAGE_URL, params=params, timeout=30)
-    response.raise_for_status()
+    response = get_with_retries(FIFA_RANKING_PAGE_URL, params=params)
     next_data = _extract_next_data(response.text)
     ranking = next_data["props"]["pageProps"]["pageData"]["ranking"]
     return {
@@ -210,13 +231,10 @@ def _fetch_ranking_metadata(*, language: str) -> dict[str, Any]:
 
 
 def _fetch_ranking_payload(ranking_id: str, *, language: str) -> dict[str, Any]:
-    response = httpx.get(
+    response = get_with_retries(
         FIFA_RANKINGS_API_URL,
         params={"rankingScheduleId": ranking_id, "language": language},
-        timeout=30,
-        headers={"User-Agent": "wcip-ranking-ingestion/1.0"},
     )
-    response.raise_for_status()
     payload = response.json()
     if not isinstance(payload, dict):
         raise ValueError("FIFA ranking API returned a non-object payload")

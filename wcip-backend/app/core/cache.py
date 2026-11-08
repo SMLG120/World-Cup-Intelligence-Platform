@@ -16,10 +16,27 @@ logger = logging.getLogger(__name__)
 
 
 class _MemoryCache:
-    """Tiny TTL cache used when Redis is unreachable."""
+    """Tiny TTL cache used when Redis is unreachable.
+
+    Bounded: expired entries are only dropped when read, and rate-limit keys
+    (one per client IP per minute) are never read again, so without a sweep
+    the store grew for the life of the process.
+    """
+
+    MAX_ENTRIES = 20_000
 
     def __init__(self) -> None:
         self._store: dict[str, tuple[float, str]] = {}
+
+    def _sweep(self) -> None:
+        now = time.time()
+        for key in [k for k, (exp, _) in self._store.items() if exp < now]:
+            self._store.pop(key, None)
+        # Trim to 90% so a full store is swept once per ~2k writes, not on each.
+        overflow = len(self._store) - int(self.MAX_ENTRIES * 0.9)
+        if overflow > 0:
+            for key, _ in sorted(self._store.items(), key=lambda kv: kv[1][0])[:overflow]:
+                self._store.pop(key, None)
 
     def get(self, key: str) -> Optional[str]:
         item = self._store.get(key)
@@ -32,6 +49,8 @@ class _MemoryCache:
         return value
 
     def setex(self, key: str, ttl: int, value: str) -> None:
+        if len(self._store) >= self.MAX_ENTRIES and key not in self._store:
+            self._sweep()
         self._store[key] = (time.time() + ttl, value)
 
     def delete(self, *keys: str) -> None:

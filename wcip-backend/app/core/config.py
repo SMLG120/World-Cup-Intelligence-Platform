@@ -64,6 +64,11 @@ class Settings(BaseSettings):
             return "postgresql://" + v[len("postgres://"):]
         return v
 
+    # Per-process SQLAlchemy pool. Supabase's transaction pooler multiplexes
+    # these onto few Postgres backends, so small values are enough.
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
+
     # --- redis / celery ---
     REDIS_URL: str = "redis://localhost:6379/0"
     CACHE_TTL_SECONDS: int = 300
@@ -154,6 +159,12 @@ class Settings(BaseSettings):
             if refresh_secret in unsafe_values:
                 raise ValueError(
                     "JWT_REFRESH_SECRET_KEY must be set to a strong production secret"
+                )
+            # A missing DATABASE_URL used to fall back to SQLite on Render's
+            # ephemeral disk: the app booted, then lost all data on restart.
+            if self.DATABASE_URL.startswith("sqlite"):
+                raise ValueError(
+                    "DATABASE_URL must point to the production Postgres (Supabase) database"
                 )
         return self
 

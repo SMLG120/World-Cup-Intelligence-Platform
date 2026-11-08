@@ -24,10 +24,10 @@ services:
         generateValue: true
       - key: JWT_ALGORITHM
         value: HS256
+      # Supabase Postgres connection string (Connect > Transaction pooler,
+      # port 6543, sslmode=require). Set in the Render dashboard; never commit.
       - key: DATABASE_URL
-        fromDatabase:
-          name: wcip-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           name: wcip-redis
@@ -44,7 +44,7 @@ services:
           type: redis
           property: connectionString
       - key: ALLOWED_ORIGINS
-        value: https://world-cup-intelligence-platform.vercel.app,http://localhost:3000
+        value: https://world-cup-intelligence-platform.vercel.app
       - key: BACKEND_CORS_ORIGINS
         value: https://world-cup-intelligence-platform.vercel.app
       - key: CORS_ORIGINS
@@ -52,7 +52,7 @@ services:
       - key: BACKEND_CORS_ORIGIN_REGEX
         value: https://world-cup-intelligence-platform(?:-[a-z0-9-]+)?\.vercel\.app
       - key: FIFA_RANKING_SOURCE_URL
-        value: https://inside.fifa.com/fifa-world-ranking/men
+        value: https://inside.fifa.com/fifa-rankings/world-ranking/men
       - key: ELO_RATING_SOURCE_URL
         value: https://www.eloratings.net/2026_World_Cup
       - key: ELO_RATING_TSV_URL
@@ -76,10 +76,10 @@ services:
         sync: false
       - key: JWT_REFRESH_SECRET_KEY
         sync: false
+      # Supabase Postgres connection string (Connect > Transaction pooler,
+      # port 6543, sslmode=require). Set in the Render dashboard; never commit.
       - key: DATABASE_URL
-        fromDatabase:
-          name: wcip-db
-          property: connectionString
+        sync: false
       - key: CELERY_BROKER_URL
         fromService:
           name: wcip-redis
@@ -91,7 +91,41 @@ services:
           type: redis
           property: connectionString
       - key: FIFA_RANKING_SOURCE_URL
-        value: https://inside.fifa.com/fifa-world-ranking/men
+        value: https://inside.fifa.com/fifa-rankings/world-ranking/men
+      - key: ELO_RATING_SOURCE_URL
+        value: https://www.eloratings.net/2026_World_Cup
+      - key: ELO_RATING_TSV_URL
+        value: https://www.eloratings.net/World.tsv
+
+  # The single authoritative data-refresh process. Fetches FIFA rankings,
+  # Elo ratings and match results, validates them, and stores versioned
+  # snapshots in Supabase. Vercel never calls providers; it reads the API.
+  # The FIFA step makes one small page request per run and downloads the
+  # table only when FIFA has published a new release.
+  - type: cron
+    name: wcip-data-sync
+    runtime: python
+    rootDir: wcip-backend
+    schedule: "15 */6 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m scripts.sync_data
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: JWT_REFRESH_SECRET_KEY
+        sync: false
+      - key: FIFA_RANKING_SOURCE_URL
+        value: https://inside.fifa.com/fifa-rankings/world-ranking/men
       - key: ELO_RATING_SOURCE_URL
         value: https://www.eloratings.net/2026_World_Cup
       - key: ELO_RATING_TSV_URL
@@ -102,7 +136,4 @@ services:
     plan: starter
     ipAllowList: []
 
-databases:
-  - name: wcip-db
-    plan: starter
-    postgresMajorVersion: "16"
+# Database: Supabase Postgres (managed outside Render). See DATABASE_URL above.

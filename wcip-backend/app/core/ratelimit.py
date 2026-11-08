@@ -22,7 +22,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Don't throttle docs / health.
-        if request.url.path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        if request.url.path in ("/health", "/ready", "/docs", "/openapi.json", "/redoc"):
             return await call_next(request)
 
         client = request.client.host if request.client else "anon"

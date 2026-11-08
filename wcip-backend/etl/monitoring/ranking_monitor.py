@@ -9,7 +9,11 @@ from sqlalchemy import select
 
 from app.db.base import SessionLocal
 from app.models.ranking import FifaRankingEntry, FifaRankingSnapshot
-from etl.extract.fifa_rankings import RankingSnapshot, fetch_fifa_ranking_snapshot
+from etl.extract.fifa_rankings import (
+    RankingSnapshot,
+    fetch_fifa_ranking_snapshot,
+    fetch_latest_ranking_info,
+)
 from etl.load.ranking_loader import load_fifa_ranking_snapshot
 
 logger = logging.getLogger(__name__)
@@ -40,8 +44,30 @@ def check_fifa_ranking_update(
 ) -> dict[str, Any]:
     """Fetch, compare, store, and optionally trigger retraining."""
 
-    snapshot = fetch_fifa_ranking_snapshot(force_refresh=force_refresh)
     current = _get_current_snapshot()
+    if force_refresh and current is not None:
+        # Conditional check: one small page request. FIFA publishes roughly
+        # monthly, so most daily runs end here without the full download.
+        latest = fetch_latest_ranking_info()
+        if latest.ranking_id == current["ranking_id"]:
+            logger.info("FIFA ranking %s is already current; payload not fetched", latest.ranking_id)
+            return {
+                "ranking_id": latest.ranking_id,
+                "ranking_date": current["ranking_date"].isoformat(),
+                "changed": False,
+                "not_modified": True,
+                "next_update_at": latest.next_update_at.isoformat() if latest.next_update_at else None,
+                "changes": 0,
+                "material_changes": 0,
+                "should_retrain": False,
+                "retraining_triggered": False,
+                "retrain_error": None,
+                "retrain_result": None,
+                "load_result": None,
+                "top_changes": [],
+            }
+
+    snapshot = fetch_fifa_ranking_snapshot(force_refresh=force_refresh)
     changes = _compare_snapshots(current, snapshot)
 
     changed = current is None or current["ranking_id"] != snapshot.ranking_id or bool(changes)

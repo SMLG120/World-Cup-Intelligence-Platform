@@ -1,7 +1,7 @@
 """Real-time data pipeline tests."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, timedelta, datetime
 
 from sqlalchemy import delete, func, select
 
@@ -154,7 +154,9 @@ def test_data_freshness_handles_partial_database(client):
             db.add(
                 EloRatingSnapshot(
                     snapshot_id="test-partial-elo",
-                    rating_date=date(2026, 6, 22),
+                    # Relative date: a fixed date ages past ELO_STALE_DAYS and
+                    # turns this partial-DB test into a staleness test.
+                    rating_date=date.today() - timedelta(days=1),
                     source_url="test://partial-elo",
                     source_hash="partial",
                     team_count=0,
@@ -289,3 +291,35 @@ def _clear_freshness_tables(db):
     db.execute(delete(MatchResult))
     db.execute(delete(MLModelRecord))
     db.execute(delete(QualifiedTeam))
+
+
+def test_data_freshness_flags_stale_snapshots(client):
+    from datetime import datetime, timezone
+
+    from app.models.ranking import FifaRankingSnapshot
+
+    with SessionLocal() as db:
+        tx = db.begin()
+        try:
+            _clear_freshness_tables(db)
+            db.add(EloRatingSnapshot(
+                snapshot_id="test-stale-elo", rating_date=date.today() - timedelta(days=60),
+                source_url="test://stale-elo", source_hash="stale", team_count=0,
+                is_current=True, data_version="elo-stale-test",
+            ))
+            db.add(FifaRankingSnapshot(
+                ranking_id="FRS_STALE_TEST", ranking_date=date.today() - timedelta(days=90),
+                published_at=datetime.now(timezone.utc) - timedelta(days=90),
+                next_update_at=datetime.now(timezone.utc) - timedelta(days=10),
+                source_url="test://stale-fifa", source_hash="stale", team_count=0, is_current=True,
+            ))
+            db.flush()
+            payload = get_data_freshness_from_db(db)
+        finally:
+            tx.rollback()
+
+    assert payload["sources"]["elo"]["status"] == "stale"
+    assert payload["sources"]["fifa_rankings"]["status"] == "stale"
+    assert payload["sources"]["fifa_rankings"]["data_kind"] == "official"
+    assert payload["status"] == "partial"
+    assert any("past its scheduled next release" in w for w in payload["warnings"])

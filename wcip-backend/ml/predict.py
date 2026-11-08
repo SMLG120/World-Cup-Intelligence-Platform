@@ -59,15 +59,25 @@ def invalidate_model_cache() -> None:
 
 
 def _model_feature_count(model: Any) -> int | None:
+    """Number of input features the fitted model expects, or None if unknown.
+
+    A count of 0 is treated as unknown: CatBoostClassifier reports
+    ``n_features_in_ == 0`` for these pickles even though it was fitted on 33
+    features, and slicing the input to zero columns made every CatBoost
+    prediction fail ("Input data must have at least one feature").
+    """
     count = getattr(model, "n_features_in_", None)
-    if count is not None:
+    if count:
         return int(count)
     named_steps = getattr(model, "named_steps", None)
     if named_steps:
         for step in reversed(list(named_steps.values())):
             count = getattr(step, "n_features_in_", None)
-            if count is not None:
+            if count:
                 return int(count)
+    feature_names = getattr(model, "feature_names_", None)
+    if feature_names:
+        return len(feature_names)
     return None
 
 
