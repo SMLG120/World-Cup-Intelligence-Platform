@@ -28,7 +28,9 @@ def validate_elo_snapshot(snapshot: EloSnapshot, *, min_records: int = 20) -> El
         errors.append(f"duplicate teams: {duplicates[:10]}")
 
     for record in snapshot.records:
-        if not 500 <= float(record.rating) <= 2500:
+        # eloratings.net's real range in Nov 2026 is 370 (American Samoa) to
+        # 2287 (Spain); the bounds catch parse errors without rejecting minnows.
+        if not 100 <= float(record.rating) <= 2600:
             errors.append(f"{record.team_name} has implausible Elo rating {record.rating}")
         if record.rank is not None and record.rank <= 0:
             errors.append(f"{record.team_name} has invalid Elo rank {record.rank}")

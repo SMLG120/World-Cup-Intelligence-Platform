@@ -11,14 +11,17 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from etl.extract.elo_ratings import _ELO_FALLBACK
+from etl.extract.http import get_with_retries
 
 logger = logging.getLogger(__name__)
 
 ELO_WORLD_CUP_URL = "https://www.eloratings.net/2026_World_Cup"
 ELO_WORLD_TSV_URL = "https://www.eloratings.net/World.tsv"
+ELO_TEAMS_TSV_URL = "https://www.eloratings.net/en.teams.tsv"
+# World.tsv lists ~240 teams; anything far below that is a parse failure or a
+# truncated response and must not become the current snapshot.
+MIN_NETWORK_RECORDS = 150
 _CACHE = Path(__file__).parents[2] / "data" / "cache" / "elo_snapshot.json"
 
 try:
@@ -28,6 +31,10 @@ try:
     ELO_WORLD_TSV_URL = settings.ELO_RATING_TSV_URL or ELO_WORLD_TSV_URL
 except Exception:
     pass
+
+
+class EloSourceUnavailable(RuntimeError):
+    """No live Elo source returned a plausible full snapshot."""
 
 
 @dataclass(frozen=True)
@@ -62,51 +69,107 @@ def fetch_latest_elo_snapshot(
 
     if not force_refresh and _CACHE.exists():
         cached = _read_cache()
-        if cached:
+        if cached and not cached.source_url.startswith("embedded://"):
             return cached
 
-    if allow_network:
-        for url in (ELO_WORLD_CUP_URL, ELO_WORLD_TSV_URL):
-            try:
-                response = httpx.get(
-                    url,
-                    timeout=30,
-                    follow_redirects=True,
-                    headers={"User-Agent": "wcip-elo-ingestion/1.0"},
+    if not allow_network:
+        # Offline mode (tests / air-gapped dev) only. Never written to the
+        # cache, so it cannot leak into a later "real" refresh.
+        return _fallback_snapshot()
+
+    errors: list[str] = []
+    for url in (ELO_WORLD_CUP_URL, ELO_WORLD_TSV_URL):
+        try:
+            response = get_with_retries(url)
+            code_map = _fetch_team_code_map() if _looks_like_coded_tsv(response.text) else None
+            records = _parse_payload(response.text, url, code_map=code_map)
+            if len(records) >= MIN_NETWORK_RECORDS:
+                snapshot = RawEloSnapshot(
+                    source_url=url,
+                    rating_date=_parse_rating_date(response.text) or date.today(),
+                    source_hash=_hash_text(response.text),
+                    records=records,
+                    http_status=response.status_code,
                 )
-                response.raise_for_status()
-                records = _parse_payload(response.text, url)
-                if len(records) >= 20:
-                    snapshot = RawEloSnapshot(
-                        source_url=url,
-                        rating_date=_parse_rating_date(response.text) or date.today(),
-                        source_hash=_hash_text(response.text),
-                        records=records,
-                        http_status=response.status_code,
-                    )
-                    _write_cache(snapshot)
-                    return snapshot
-                logger.warning("Elo source %s parsed only %d rows", url, len(records))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Elo source %s unavailable: %s", url, exc)
+                _write_cache(snapshot)
+                return snapshot
+            errors.append(f"{url}: parsed {len(records)} rows (need {MIN_NETWORK_RECORDS})")
+            logger.warning("Elo source %s parsed only %d rows", url, len(records))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{url}: {exc}")
+            logger.warning("Elo source %s unavailable: %s", url, exc)
 
-    snapshot = _fallback_snapshot()
-    _write_cache(snapshot)
-    return snapshot
+    # Previously this fell back to a small embedded table stamped with today's
+    # date, which then replaced the real 240+ team snapshot as "current". A
+    # failed refresh must leave existing data untouched, so raise instead.
+    raise EloSourceUnavailable("; ".join(errors) or "no Elo source configured")
 
 
-def _parse_payload(text: str, source_url: str) -> list[RawEloRecord]:
+def _parse_payload(
+    text: str,
+    source_url: str,
+    *,
+    code_map: dict[str, str] | None = None,
+) -> list[RawEloRecord]:
     if source_url.endswith(".tsv") or "\t" in text:
-        return _parse_tsv(text)
+        return _parse_tsv(text, code_map=code_map)
     return _parse_html_table(text)
 
 
-def _parse_tsv(text: str) -> list[RawEloRecord]:
+_CODE_RE = re.compile(r"^[A-Z]{2,3}$")
+
+
+def _looks_like_coded_tsv(text: str) -> bool:
+    """True for the current World.tsv layout: ``rank, rank, CODE, rating, ...``."""
+
+    for line in text.splitlines()[:5]:
+        parts = line.split("\t")
+        if len(parts) >= 4 and _CODE_RE.match(parts[2].strip()):
+            return True
+    return False
+
+
+def _fetch_team_code_map() -> dict[str, str]:
+    """Map eloratings.net team codes (``ES``) to English names (``Spain``)."""
+
+    response = get_with_retries(ELO_TEAMS_TSV_URL)
+    mapping: dict[str, str] = {}
+    for line in response.text.splitlines():
+        parts = [part.strip() for part in line.split("\t")]
+        if len(parts) >= 2 and parts[0] and parts[1]:
+            mapping[parts[0]] = parts[1]
+    if len(mapping) < MIN_NETWORK_RECORDS:
+        raise ValueError(f"Elo team code table has only {len(mapping)} entries")
+    return mapping
+
+
+def _parse_tsv(text: str, *, code_map: dict[str, str] | None = None) -> list[RawEloRecord]:
     rows: list[RawEloRecord] = []
     for line in text.splitlines():
         parts = [part.strip() for part in line.split("\t")]
         if len(parts) < 3:
             continue
+        if code_map is not None and len(parts) >= 4 and _CODE_RE.match(parts[2]):
+            # Current layout: rank, rank, team code, rating, ...
+            try:
+                rank = int(float(parts[0]))
+                rating = float(parts[3])
+            except ValueError:
+                continue
+            name = code_map.get(parts[2])
+            if not name:
+                logger.warning("Unknown Elo team code %s; row skipped", parts[2])
+                continue
+            rows.append(
+                RawEloRecord(
+                    team_name=name,
+                    rank=rank,
+                    rating=rating,
+                    raw_payload={"source_row": parts[:4], "team_code": parts[2]},
+                )
+            )
+            continue
+        # Legacy layout: rank, team name, rating, ...
         try:
             rank = int(float(parts[0]))
             rating = float(parts[2])

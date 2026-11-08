@@ -123,27 +123,30 @@ def _get_team_elo(team_name: str, as_of_date: date | None = None) -> float:
         canonical_name = canonical(team_name)
         db = SessionLocal()
         try:
-            snapshot_query = select(EloRatingSnapshot)
+            # Pick this team's newest rating across *all* snapshots, rather
+            # than the newest snapshot and then the team. Live match updates
+            # write 2-team snapshots; selecting the snapshot first made every
+            # other team miss and fall back to a 1500 default.
+            rating_query = (
+                select(TeamEloRating.rating)
+                .join(EloRatingSnapshot, TeamEloRating.snapshot_id == EloRatingSnapshot.id)
+                .where(TeamEloRating.team_name == canonical_name)
+            )
             if as_of_date is not None:
-                snapshot_query = snapshot_query.where(EloRatingSnapshot.rating_date <= as_of_date)
-            else:
-                snapshot_query = snapshot_query.where(EloRatingSnapshot.is_current.is_(True))
-            snapshot = db.scalar(
-                snapshot_query
+                # Historical as-of lookups must not see ratings dated on match
+                # day: a per-match snapshot dated D already includes D's result.
+                rating_query = rating_query.where(
+                    EloRatingSnapshot.rating_date < as_of_date
+                    if _is_historical(as_of_date)
+                    else EloRatingSnapshot.rating_date <= as_of_date
+                )
+            rating = db.scalar(
+                rating_query
                 .order_by(EloRatingSnapshot.rating_date.desc(), EloRatingSnapshot.id.desc())
                 .limit(1)
             )
-            if snapshot:
-                rating = db.scalar(
-                    select(TeamEloRating)
-                    .where(
-                        TeamEloRating.snapshot_id == snapshot.id,
-                        TeamEloRating.team_name == canonical_name,
-                    )
-                    .limit(1)
-                )
-                if rating:
-                    return rating.rating
+            if rating is not None:
+                return float(rating)
 
             asof = _asof_datetime(as_of_date)
             if asof is not None:
@@ -354,7 +357,11 @@ def _get_team_fifa_rank(team_name: str, as_of_date: date | None = None) -> int:
             snapshot = db.scalar(
                 select(FifaRankingSnapshot)
                 .where(
-                    FifaRankingSnapshot.ranking_date <= (as_of_date or date.today()),
+                    # Strict for historical dates: a release dated D can
+                    # include matches played on D (leakage into features).
+                    FifaRankingSnapshot.ranking_date < as_of_date
+                    if _is_historical(as_of_date)
+                    else FifaRankingSnapshot.ranking_date <= (as_of_date or date.today()),
                 )
                 .order_by(FifaRankingSnapshot.ranking_date.desc(), FifaRankingSnapshot.id.desc())
                 .limit(1)

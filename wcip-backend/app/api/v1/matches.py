@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.cache import cache
 from app.services.head_to_head_prediction import predict_head_to_head
+from app.services.prediction_cache import cached_prediction
 from app.services import prediction
 from app.schemas.domain import (MatchPrediction, MatchRequest,
                                 TournamentRequest)
@@ -60,13 +61,24 @@ def predict_match_head_to_head(req: HeadToHeadPredictionRequest):
     away = canonical(req.away_team)
     if home == away:
         raise HTTPException(400, "home_team and away_team must be different")
-    return predict_head_to_head(
-        home_team=home,
-        away_team=away,
-        match_date=req.match_date,
-        home_overrides=req.home_overrides,
-        away_overrides=req.away_overrides,
-        include_shap=req.include_shap,
+    return cached_prediction(
+        "h2h",
+        {
+            "home": home,
+            "away": away,
+            "match_date": req.match_date,
+            "home_overrides": req.home_overrides,
+            "away_overrides": req.away_overrides,
+            "include_shap": req.include_shap,
+        },
+        lambda: predict_head_to_head(
+            home_team=home,
+            away_team=away,
+            match_date=req.match_date,
+            home_overrides=req.home_overrides,
+            away_overrides=req.away_overrides,
+            include_shap=req.include_shap,
+        ),
     )
 
 

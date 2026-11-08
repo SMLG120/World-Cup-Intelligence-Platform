@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -215,6 +215,28 @@ def _get_model_weights() -> Dict[str, float]:
 # SHAP explainability
 # ---------------------------------------------------------------------------
 
+_TREE_EXPLAINERS: Dict[int, Any] = {}
+
+
+def _tree_explainer(model: Any) -> Any:
+    """Return a cached SHAP TreeExplainer for ``model``.
+
+    Building one parses every tree (~0.4 s for these models) and used to run
+    on every /ml/predict request (include_shap defaults to True). Keyed by
+    object identity, so a model reloaded after retraining gets a new one.
+    """
+    import shap
+
+    key = id(model)
+    explainer = _TREE_EXPLAINERS.get(key)
+    if explainer is None:
+        explainer = shap.TreeExplainer(model)
+        if len(_TREE_EXPLAINERS) >= 8:  # stale entries from reloaded models
+            _TREE_EXPLAINERS.clear()
+        _TREE_EXPLAINERS[key] = explainer
+    return explainer
+
+
 def _compute_shap(model_name: str, fv: FeatureVector) -> Optional[List[float]]:
     """Compute SHAP values for the home_win probability."""
     try:
@@ -236,8 +258,7 @@ def _compute_shap(model_name: str, fv: FeatureVector) -> Optional[List[float]]:
             explainer = shap.LinearExplainer(actual_model, X_scaled)
             shap_vals = explainer.shap_values(X_scaled)
         else:
-            actual_model = model
-            explainer = shap.TreeExplainer(actual_model)
+            explainer = _tree_explainer(model)
             shap_vals = explainer.shap_values(X)
 
         # shap_vals shape: (n_classes, n_samples, n_features) or (n_samples, n_features)

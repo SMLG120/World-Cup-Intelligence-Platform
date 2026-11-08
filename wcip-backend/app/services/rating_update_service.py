@@ -155,8 +155,9 @@ def _update_ratings_after_match(db: Session, match_id: int) -> RatingUpdateResul
         .limit(1)
     )
     if latest_current is None or match.match_date >= latest_current.rating_date:
-        db.query(EloRatingSnapshot).update({EloRatingSnapshot.is_current: False})
-        snapshot.is_current = True
+        # Update the display ratings only. The 2-team per-match snapshot must
+        # never become ``is_current``: that flag marks the full source
+        # snapshot that /ratings/elo/latest and freshness read.
         home_team.elo = home_after
         away_team.elo = away_after
 
@@ -226,6 +227,22 @@ def _team_by_name(db: Session, name: str) -> Team | None:
 
 
 def _latest_elo_before(db: Session, team: Team, match_date) -> float:
+    # Pre-match baseline: the team's newest rating from any snapshot strictly
+    # before kickoff day (full source snapshots and earlier per-match updates).
+    # Previously only EloHistory was consulted; full snapshot imports never
+    # write EloHistory, so updates started from ``team.elo`` (often 1500).
+    snapshot_rating = db.scalar(
+        select(TeamEloRating.rating)
+        .join(EloRatingSnapshot, TeamEloRating.snapshot_id == EloRatingSnapshot.id)
+        .where(
+            TeamEloRating.team_name == team.name,
+            EloRatingSnapshot.rating_date < match_date,
+        )
+        .order_by(EloRatingSnapshot.rating_date.desc(), EloRatingSnapshot.id.desc())
+        .limit(1)
+    )
+    if snapshot_rating is not None:
+        return float(snapshot_rating)
     asof = datetime.combine(match_date, time.max).replace(tzinfo=timezone.utc)
     row = db.scalar(
         select(EloHistory)

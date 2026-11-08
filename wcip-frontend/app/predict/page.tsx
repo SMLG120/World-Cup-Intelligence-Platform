@@ -3,19 +3,27 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { useTeams, useSimulateMatch, useMLPredict, useHeadToHeadPrediction } from "@/lib/queries";
 import type { MatchPrediction, HybridPrediction, HeadToHeadPrediction } from "@/lib/types";
 import { Card, CardHeader, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SaveSimulationButton } from "@/components/save-simulation-button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { WinnerPredictionsSection } from "@/components/winner-predictions-section";
 import { DataFreshnessStrip } from "@/components/data-freshness";
+import { MODEL_LABELS } from "@/lib/model-labels";
 import { pct } from "@/lib/utils";
+
+// Chart-heavy sections load as separate chunks: the charting library
+// (~100 KB gzip) was otherwise part of this page's first-load JavaScript.
+const WinnerPredictionsSection = dynamic(
+  () => import("@/components/winner-predictions-section").then((m) => m.WinnerPredictionsSection),
+  { loading: () => <Skeleton className="h-64 w-full" /> },
+);
+const ModelComparisonChart = dynamic(() => import("@/components/model-comparison-chart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-60 w-full" />,
+});
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -166,68 +174,7 @@ function OutcomeBar({
 
 // ── Model comparison bar chart ────────────────────────────────────────────────
 
-const MODEL_LABELS: Record<string, string> = {
-  elo: "Elo",
-  fifa: "FIFA",
-  player_strength: "Player Strength",
-  statistical: "Statistical",
-  ml: "ML Average",
-  logistic: "Logistic",
-  random_forest: "Rnd Forest",
-  xgboost: "XGBoost",
-  lightgbm: "LightGBM",
-  catboost: "CatBoost",
-  ensemble: "Ensemble",
-};
 
-function ModelComparisonChart({
-  home,
-  away,
-  statistical,
-  ml,
-  ensemble,
-}: {
-  home: string;
-  away: string;
-  statistical: { home_win: number; draw: number; away_win: number };
-  ml: Record<string, { home_win: number; draw: number; away_win: number }>;
-  ensemble: { home_win: number; draw: number; away_win: number };
-}) {
-  const data = [
-    { model: "Statistical", home_win: statistical.home_win * 100, draw: statistical.draw * 100, away_win: statistical.away_win * 100 },
-    ...Object.entries(ml).map(([k, v]) => ({
-      model: MODEL_LABELS[k] ?? k,
-      home_win: v.home_win * 100,
-      draw: v.draw * 100,
-      away_win: v.away_win * 100,
-    })),
-    { model: "Ensemble", home_win: ensemble.home_win * 100, draw: ensemble.draw * 100, away_win: ensemble.away_win * 100 },
-  ];
-
-  return (
-    <ResponsiveContainer width="100%" height={240}>
-      <BarChart data={data} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--line))" vertical={false} />
-        <XAxis dataKey="model" stroke="hsl(var(--muted))" fontSize={10} tick={{ fill: "hsl(var(--muted))" }} />
-        <YAxis tickFormatter={(v: number) => `${v}%`} stroke="hsl(var(--muted))" fontSize={10} domain={[0, 100]} />
-        <Tooltip
-          formatter={(v: number, name: string) => [
-            `${v.toFixed(1)}%`,
-            name === "home_win" ? home : name === "away_win" ? away : "Draw",
-          ]}
-          contentStyle={{
-            background: "hsl(var(--elevated))", border: "1px solid hsl(var(--line))",
-            borderRadius: 8, fontSize: 11,
-          }}
-          labelStyle={{ color: "hsl(var(--fg))", fontWeight: "bold" }}
-        />
-        <Bar dataKey="home_win" stackId="a" fill="hsl(var(--pitch))" name="home_win" />
-        <Bar dataKey="draw" stackId="a" fill="hsl(var(--line))" name="draw" />
-        <Bar dataKey="away_win" stackId="a" fill="hsl(var(--signal))" name="away_win" radius={[4, 4, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  );
-}
 
 // ── Factors radar ─────────────────────────────────────────────────────────────
 

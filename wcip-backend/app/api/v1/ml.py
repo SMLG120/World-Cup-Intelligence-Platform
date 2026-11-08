@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.deps import AdminUser, CurrentUser
+from app.services.prediction_cache import cached_prediction
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ml", tags=["ml"])
@@ -78,19 +79,34 @@ def ml_predict(req: MLPredictRequest) -> Dict[str, Any]:
     ho = req.home_overrides.model_dump(exclude_none=True) if req.home_overrides else {}
     ao = req.away_overrides.model_dump(exclude_none=True) if req.away_overrides else {}
 
-    try:
-        result = predict_hybrid(
+    def _compute() -> Dict[str, Any]:
+        return predict_hybrid(
             home_team=home,
             away_team=away,
             match_date=req.match_date,
             home_overrides=ho if ho else None,
             away_overrides=ao if ao else None,
             include_shap=req.include_shap,
+        ).to_dict()
+
+    try:
+        return cached_prediction(
+            "hybrid",
+            {
+                "home": home,
+                "away": away,
+                "match_date": req.match_date,
+                "home_overrides": ho,
+                "away_overrides": ao,
+                "include_shap": req.include_shap,
+            },
+            _compute,
         )
-        return result.to_dict()
     except Exception as e:
         logger.exception("ML predict failed: %s", e)
-        raise HTTPException(500, f"Prediction failed: {e}")
+        # Exception text can include SQL, file paths or connection details;
+        # it goes to the logs (with the request id), not to the client.
+        raise HTTPException(500, "Prediction failed")
 
 
 @router.post("/train")

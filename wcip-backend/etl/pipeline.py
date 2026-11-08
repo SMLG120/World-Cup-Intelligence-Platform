@@ -48,6 +48,8 @@ def run_historical_results(force_refresh: bool = False, ignore_state: bool = Fal
 
     csv_text = fetch_results_csv(force_refresh=force_refresh)
 
+    latest_seen: list[date] = []
+
     def _validated() -> Iterator:
         errors = 0
         total = 0
@@ -55,17 +57,27 @@ def run_historical_results(force_refresh: bool = False, ignore_state: bool = Fal
             total += 1
             normalized = normalize_match(raw)
             try:
-                yield validate_match(normalized)
+                record = validate_match(normalized)
             except ValidationError as e:
                 errors += 1
                 if errors <= 10:
                     logger.debug("Validation skip: %s", e)
+                continue
+            if not latest_seen or record.match_date > latest_seen[0]:
+                latest_seen[:] = [record.match_date]
+            yield record
         logger.info("Parsed %d records, skipped %d validation errors", total, errors)
 
-    inserted = load_match_results(_validated())
+    # Guard only routine syncs; an explicit full reload (ignore_state, e.g.
+    # bootstrap into an empty or partial DB) is allowed to backfill.
+    inserted = load_match_results(_validated(), guard_backfill=not ignore_state)
 
-    state["last_results_date"] = str(date.today())
-    _save_state(state)
+    # Watermark on the newest *played* match in the source, not today's date:
+    # the upstream dataset can publish results days late, and a today-based
+    # watermark would permanently skip anything older than the 7-day overlap.
+    if latest_seen:
+        state["last_results_date"] = str(latest_seen[0])
+        _save_state(state)
     logger.info("Historical results pipeline complete. Inserted: %d", inserted)
     return inserted
 

@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     from app.db.init_db import init_db
     init_db()
     _log_startup_diagnostics()
+    _warm_models()
     logger.info("Startup complete (cache backend: %s)", cache.kind)
     yield
     logger.info("Shutdown")
@@ -68,6 +69,26 @@ def _log_startup_diagnostics() -> None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Startup diagnostics unavailable: %s", exc)
+
+
+def _warm_models() -> None:
+    """Unpickle the ML models before serving traffic.
+
+    Without this the first prediction after every deploy/restart paid ~4-5 s
+    of model loading and library imports inside the user's request.
+    """
+    import time as _time
+
+    started = _time.perf_counter()
+    try:
+        from ml.predict import load_all_models
+
+        loaded = sorted(load_all_models())
+        import shap  # noqa: F401 - ~2 s import otherwise paid by the first explained prediction
+
+        logger.info("Warmed %d ML models in %.1fs: %s", len(loaded), _time.perf_counter() - started, loaded)
+    except Exception as exc:  # noqa: BLE001 - predictions degrade to statistical-only
+        logger.warning("Model warm-up failed: %s", exc)
 
 
 def _sanitize_database_url(url: str) -> str:
@@ -202,7 +223,37 @@ def root():
 
 @app.get("/health", tags=["system"])
 def health():
+    """Liveness: the process is up. Used by Render's health check."""
     return {"status": "ok"}
+
+
+@app.get("/ready", tags=["system"])
+def ready():
+    """Readiness: database reachable and models loaded.
+
+    Returns booleans only - no hostnames, versions or error text.
+    """
+    checks = {"database": False, "models": False}
+    try:
+        from sqlalchemy import text
+        from app.db.base import engine
+
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception:  # noqa: BLE001
+        logger.warning("Readiness: database check failed", exc_info=True)
+    try:
+        from ml.predict import load_all_models
+
+        checks["models"] = bool(load_all_models())
+    except Exception:  # noqa: BLE001
+        logger.warning("Readiness: model check failed", exc_info=True)
+    ok = all(checks.values())
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={"status": "ready" if ok else "not_ready", "checks": checks},
+    )
 
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)

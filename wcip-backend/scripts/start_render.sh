@@ -12,4 +12,8 @@ else
 fi
 
 echo "Starting FastAPI server..."
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Render terminates TLS at its proxy, so without these flags every request
+# appears to come from the proxy IP and all visitors share one rate-limit
+# bucket (RATE_LIMIT_PER_MINUTE). Only Render's proxy can reach $PORT.
+exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT" \
+  --proxy-headers --forwarded-allow-ips='*'
