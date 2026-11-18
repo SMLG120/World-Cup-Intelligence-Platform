@@ -1,4 +1,4 @@
-# Render deployment blueprint.
+# Render deployment blueprint (free tier: single web service).
 # Create services from this file via the Render dashboard ("New > Blueprint").
 services:
   - type: web
@@ -8,7 +8,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: bash scripts/start_render.sh
     healthCheckPath: /health
-    plan: starter
+    plan: free
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -28,21 +28,14 @@ services:
       # port 6543, sslmode=require). Set in the Render dashboard; never commit.
       - key: DATABASE_URL
         sync: false
-      - key: REDIS_URL
-        fromService:
-          name: wcip-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: wcip-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: wcip-redis
-          type: redis
-          property: connectionString
+      # Free tier: no Redis/worker. The cache falls back to in-process memory
+      # and large simulations run inline instead of on Celery.
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "true"
+      # No paid cron on the free plan: sync FIFA/Elo/results in the background
+      # on every start. Free services sleep when idle, so each wake refreshes.
+      - key: SYNC_DATA_ON_START
+        value: "true"
       - key: ALLOWED_ORIGINS
         value: https://world-cup-intelligence-platform.vercel.app
       - key: BACKEND_CORS_ORIGINS
@@ -57,83 +50,8 @@ services:
         value: https://www.eloratings.net/2026_World_Cup
       - key: ELO_RATING_TSV_URL
         value: https://www.eloratings.net/World.tsv
-  - type: worker
-    name: wcip-worker
-    runtime: python
-    rootDir: wcip-backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.workers.celery_app.celery_app worker --loglevel=info
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: APP_ENV
-        value: production
-      - key: DEBUG
-        value: "false"
-      - key: SECRET_KEY
-        sync: false
-      - key: JWT_SECRET_KEY
-        sync: false
-      - key: JWT_REFRESH_SECRET_KEY
-        sync: false
-      # Supabase Postgres connection string (Connect > Transaction pooler,
-      # port 6543, sslmode=require). Set in the Render dashboard; never commit.
-      - key: DATABASE_URL
-        sync: false
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: wcip-redis
-          type: redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: wcip-redis
-          type: redis
-          property: connectionString
-      - key: FIFA_RANKING_SOURCE_URL
-        value: https://inside.fifa.com/fifa-rankings/world-ranking/men
-      - key: ELO_RATING_SOURCE_URL
-        value: https://www.eloratings.net/2026_World_Cup
-      - key: ELO_RATING_TSV_URL
-        value: https://www.eloratings.net/World.tsv
-
-  # The single authoritative data-refresh process. Fetches FIFA rankings,
-  # Elo ratings and match results, validates them, and stores versioned
-  # snapshots in Supabase. Vercel never calls providers; it reads the API.
-  # The FIFA step makes one small page request per run and downloads the
-  # table only when FIFA has published a new release.
-  - type: cron
-    name: wcip-data-sync
-    runtime: python
-    rootDir: wcip-backend
-    schedule: "15 */6 * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m scripts.sync_data
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: APP_ENV
-        value: production
-      - key: DEBUG
-        value: "false"
-      - key: DATABASE_URL
-        sync: false
-      - key: SECRET_KEY
-        sync: false
-      - key: JWT_SECRET_KEY
-        sync: false
-      - key: JWT_REFRESH_SECRET_KEY
-        sync: false
-      - key: FIFA_RANKING_SOURCE_URL
-        value: https://inside.fifa.com/fifa-rankings/world-ranking/men
-      - key: ELO_RATING_SOURCE_URL
-        value: https://www.eloratings.net/2026_World_Cup
-      - key: ELO_RATING_TSV_URL
-        value: https://www.eloratings.net/World.tsv
-
-  - type: redis
-    name: wcip-redis
-    plan: starter
-    ipAllowList: []
 
 # Database: Supabase Postgres (managed outside Render). See DATABASE_URL above.
+# Paid add-ons removed for the free plan: celery worker, wcip-redis, and the
+# wcip-data-sync cron (python -m scripts.sync_data every 6h). Restore them from
+# git history if you upgrade.
